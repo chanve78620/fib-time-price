@@ -32,6 +32,8 @@ def _iso(d) -> str:
 
 def _normalize_ticker(raw: str) -> str:
     t = raw.strip().upper().replace(" ", "")
+    if t.endswith("-D"):  # Dynamic Trader style "$SPX-D"
+        t = t[:-2]
     # Common continuous / front-month aliases → Yahoo symbols
     aliases = {
         "ES": "ES=F",
@@ -46,8 +48,32 @@ def _normalize_ticker(raw: str) -> str:
         "GC": "GC=F",
         "SI": "SI=F",
         "SI1!": "SI=F",
+        "SPX": "^GSPC",
+        "$SPX": "^GSPC",
+        "GSPC": "^GSPC",
+        "NDX": "^NDX",
+        "$NDX": "^NDX",
+        "COMP": "^IXIC",
+        "IXIC": "^IXIC",
+        "DJI": "^DJI",
+        "DJIA": "^DJI",
+        "$DJI": "^DJI",
+        "INDU": "^DJI",
+        "RUT": "^RUT",
+        "$RUT": "^RUT",
+        "VIX": "^VIX",
+        "$VIX": "^VIX",
+        "ZB": "ZB=F",
+        "ZN": "ZN=F",
+        "NG": "NG=F",
+        "HG": "HG=F",
+        "BTC": "BTC-USD",
+        "ETH": "ETH-USD",
     }
-    return aliases.get(t, t)
+    t = aliases.get(t, t)
+    if t.startswith("$"):
+        t = t[1:]
+    return t
 
 
 # Simple in-memory cache of yfinance results: avoids hammering Yahoo (which
@@ -223,6 +249,10 @@ def _history_payload(sym: str, df, period: str) -> dict[str, Any]:
     closes = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["Close"]]
     highs = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["High"]]
     lows = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["Low"]]
+    if "Open" in df.columns:
+        opens = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["Open"]]
+    else:
+        opens = list(closes)
     return {
         "ticker": sym,
         "period": period,
@@ -230,12 +260,18 @@ def _history_payload(sym: str, df, period: str) -> dict[str, Any]:
         "closes": closes,
         "highs": highs,
         "lows": lows,
+        "opens": opens,
     }
 
 
 @app.get("/")
 def index():
     return send_from_directory(ROOT, "index.html")
+
+
+@app.get("/classic")
+def classic():
+    return send_from_directory(ROOT, "classic.html")
 
 
 @app.get("/api/pivots")
