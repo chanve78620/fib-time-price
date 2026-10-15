@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fib Time &amp; Price</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a222c;
+    --border: #2d3a47;
+    --text: #e7ecf1;
+    --muted: #8b9aab;
+    --accent: #3dd68c;
+    --header-bg: #8b1e1e;
+    --header-fg: #7dff9a;
+    --input-bg: #ff9f43;
+    --input-fg: #1a1000;
+    --row-alt: #151c24;
+    --major: #ff5c5c;
+    --bold: #f2f6fa;
+    --high: #5cbcff;
+    --low: #ffb86b;
+    --time: #a78bfa;
+    --price-ext: #f472b6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.4;
+    padding: 1rem 1.25rem 2rem;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 0.15rem; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 1rem; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+  }
+  .card h2 {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .card h2 .hint {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-left: 0.4rem;
+  }
+  label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+  }
+  input[type="date"], input[type="number"], input[type="text"] {
+    width: 100%;
+    padding: 0.42rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #0c1116;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  input.orange {
+    background: var(--input-bg);
+    color: var(--input-fg);
+    border-color: #e08a2e;
+    font-weight: 600;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #243040;
+    color: var(--text);
+    padding: 0.48rem 0.9rem;
+    font-weight: 600;
+  }
+  button.primary {
+    background: var(--accent);
+    color: #0a1a12;
+    border-color: #2bb872;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.55; cursor: wait; }
+  button.mini {
+    padding: 0.2rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  button.mini.d1 { border-color: #e08a2e; color: #ffc078; }
+  button.mini.d2 { border-color: #3dd68c; color: #7dffb0; }
+  button.linkish {
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--muted);
+    font-size: 0.8rem;
+    padding: 0.35rem 0.7rem;
+  }
+  .status {
+    font-size: 0.85rem;
+    color: var(--muted);
+    min-height: 1.2em;
+  }
+  .status.err { color: #ff7b7b; }
+  .status.ok { color: var(--accent); }
+  .file-note {
+    display: none;
+    background: #2a1f12;
+    border: 1px solid #6b4a22;
+    color: #ffd9a0;
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+  }
+  .file-note code {
+    background: #0c1116;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+  }
+  .ticker-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: end;
+  }
+  .ticker-bar .grow { flex: 1 1 140px; max-width: 200px; }
+  select.pivot-select {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #0c1116;
+    color: var(--text);
+    font-size: 0.85rem;
+  }
+  .swing-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    align-items: stretch;
+  }
+  .swing-pill {
+    background: #0c1116;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    min-width: 120px;
+    flex: 1 1 110px;
+  }
+  .swing-pill .lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .swing-pill .val { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .swing-pill.d1 { border-color: #e08a2e55; }
+  .swing-pill.d1 .val { color: #ffc078; }
+  .swing-pill.d2 { border-color: #3dd68c55; }
+  .swing-pill.d2 .val { color: #7dffb0; }
+  .swing-pill.span .val { color: var(--text); }
+  .arrow {
+    display: flex;
+    align-items: center;
+    color: var(--muted);
+    font-size: 1.2rem;
+    padding: 0 0.15rem;
+  }
+  .swing-hint {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: 0.5rem 0 0;
+  }
+  .swing-hint strong { color: var(--text); }
+
+  .chart-wrap {
+    margin-top: 0.5rem;
+    position: relative;
+    height: min(580px, 68vh);
+    min-height: 380px;
+    background: #0b1016;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .chart-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 0.55rem;
+  }
+  .chart-legend span::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 3px;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+    border-radius: 1px;
+  }
+  .leg-price::before { background: #4ea8de; }
+  .leg-ext::before { background: #e8c547; }
+  .leg-time::before { background: #c9a227; height: 10px; width: 3px; }
+  .leg-anchor::before { background: #7dffb0; height: 10px; width: 3px; }
+  .leg-future::before { background: rgba(255,255,255,0.08); height: 10px; width: 14px; }
+
+  .panels {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+    margin-top: 1rem;
+  }
+  @media (min-width: 900px) {
+    .panels { grid-template-columns: 1fr 1fr; }
+  }
+  .level-list {
+    display: grid;
+    gap: 0.4rem;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+  .level-card {
+    background: #0c1116;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.55rem 0.65rem;
+  }
+  .level-card .ratio {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .level-card .main-val {
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .level-card.time .main-val { color: var(--time); }
+  .level-card.price .main-val { color: var(--price-ext); }
+  .level-card.key {
+    border-color: #3dd68c44;
+  }
+  .level-card .sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin: 0.15rem 0 0;
+  }
+  .empty-hint {
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 0.5rem 0;
+  }
+
+  details.collapse {
+    margin-top: 1rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.65rem 1rem;
+  }
+  details.collapse > summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--muted);
+    list-style: none;
+    user-select: none;
+  }
+  details.collapse > summary::-webkit-details-marker { display: none; }
+  details.collapse > summary::before {
+    content: "▸ ";
+    color: var(--accent);
+  }
+  details.collapse[open] > summary::before { content: "▾ "; }
+  details.collapse[open] > summary { margin-bottom: 0.75rem; color: var(--accent); }
+
+  .inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    background: var(--header-bg);
+    color: var(--header-fg);
+    text-align: right;
+    padding: 0.35rem 0.4rem;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td {
+    padding: 0.25rem 0.4rem;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:nth-child(even) td { background: var(--row-alt); }
+  tr.whole td { color: var(--major); font-weight: 700; }
+  tr.main td { font-weight: 700; color: var(--bold); }
+  .note { font-size: 0.75rem; color: var(--muted); margin-top: 0.6rem; }
+  .kind-high { color: var(--high); font-weight: 700; }
+  .kind-low { color: var(--low); font-weight: 700; }
+  tr.pivot-row { cursor: pointer; }
+  tr.pivot-row:hover td { background: #1e2a38; }
+  tr.pivot-row.sel1 td { outline: 1px solid #e08a2e; }
+  tr.pivot-row.sel2 td { outline: 1px solid #3dd68c; }
+  .actions { white-space: nowrap; display: flex; gap: 0.3rem; justify-content: flex-end; }
+  .sq9-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 700px) {
+    .sq9-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .sq9-card h3 {
+    margin: 0 0 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  tr.cardinal td { color: var(--accent); font-weight: 700; }
+  tr.fullcircle td { color: var(--major); font-weight: 700; }
+  .sq9-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; }
+  .sq9-out {
+    margin-top: 0.75rem;
+    padding: 0.65rem 0.8rem;
+    background: #0c1116;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 1.05rem;
+  }
+  .scroll-box { max-height: 280px; overflow: auto; }
+  .scroll-box.tall { max-height: 420px; }
+
+  .level-list { display: flex; flex-direction: column; gap: 0.35rem; }
+  .level-row { display: grid; grid-template-columns: 4.5rem 1fr auto; gap: 0.5rem; align-items: baseline;
+    padding: 0.35rem 0.45rem; background: #0c1116; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  .level-row .ratio { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .level-row .meta { color: var(--muted); font-size: 0.75rem; }
+  .empty { color: var(--muted); font-size: 0.85rem; padding: 0.4rem 0; }
+</style>
+</head>
+<body>
+  <h1>Fib Time &amp; Price</h1>
+  <p class="sub">Fibonacci calendar-day turns from Date&nbsp;2 and price extensions beyond Price&nbsp;2 — chart first.</p>
+
+  <div id="fileNote" class="file-note">
+    Opened as a local file — market data needs the server.
+    From this folder run <code>./run.sh</code> or <code>python server.py</code>, then visit
+    <code>http://127.0.0.1:8765/</code>.
+  </div>
+
+  <!-- TOP: ticker + swing summary -->
+  <section class="card">
+    <div class="ticker-bar">
+      <div class="grow">
+        <label for="ticker">Ticker</label>
+        <input type="text" id="ticker" placeholder="RSP" maxlength="12" autocomplete="off" spellcheck="false" />
+      </div>
+      <div>
+        <label for="period">Period</label>
+        <select id="period" class="pivot-select" style="min-width:100px">
+          <option value="1y">1y</option>
+          <option value="2y" selected>2y</option>
+          <option value="5y">5y</option>
+          <option value="max">max</option>
+        </select>
+      </div>
+      <button type="button" class="primary" id="loadBtn">Load</button>
+      <div style="flex:1 1 160px">
+        <label>&nbsp;</label>
+        <div id="loadStatus" class="status"></div>
+      </div>
+    </div>
+
+    <p id="suggestedHint" class="swing-hint" hidden></p>
+
+    <div class="swing-summary" id="swingSummary">
+      <div class="swing-pill d1">
+        <div class="lbl">Date 1 · Price 1</div>
+        <div class="val" id="sumD1">—</div>
+        <div class="sub" id="sumP1" style="font-size:0.85rem;color:var(--muted)">—</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="swing-pill d2">
+        <div class="lbl">Date 2 · Price 2</div>
+        <div class="val" id="sumD2">—</div>
+        <div class="sub" id="sumP2" style="font-size:0.85rem;color:var(--muted)">—</div>
+      </div>
+      <div class="swing-pill span">
+        <div class="lbl">Span</div>
+        <div class="val" id="sumDays">—</div>
+        <div class="sub" id="sumSpanMeta" style="font-size:0.75rem;color:var(--muted)"></div>
+      </div>
+    </div>
+
+    <div class="inputs" style="margin-top:0.85rem">
+      <div>
+        <label for="d1">Date 1</label>
+        <input class="orange" type="date" id="d1" value="2026-03-30" />
+      </div>
+      <div>
+        <label for="d2">Date 2</label>
+        <input class="orange" type="date" id="d2" value="2026-08-13" />
+      </div>
+      <div>
+        <label for="p1">Price 1</label>
+        <input type="number" id="p1" step="0.01" placeholder="swing start" />
+      </div>
+      <div>
+        <label for="p2">Price 2</label>
+        <input type="number" id="p2" step="0.01" value="221.90" />
+      </div>
+      <div>
+        <label for="pickStart">Start pivot</label>
+        <select id="pickStart" class="pivot-select" disabled>
+          <option value="">— load a ticker —</option>
+        </select>
+      </div>
+      <div>
+        <label for="pickEnd">End pivot</label>
+        <select id="pickEnd" class="pivot-select" disabled>
+          <option value="">— load a ticker —</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN CHART -->
+  <section class="card" style="margin-top:1rem">
+    <h2>Chart <span class="hint">history left · future margin right · EX labels · time pips</span></h2>
+    <div class="chart-wrap">
+      <canvas id="fibChart"></canvas>
+    </div>
+    <div class="chart-legend">
+      <span class="leg-price">Close</span>
+      <span class="leg-ext">Ahead EX levels (right labels)</span>
+      <span class="leg-time">Upcoming time pips (top &amp; bottom)</span>
+      <span class="leg-anchor">Swing anchors</span>
+      <span class="leg-future">Blank future margin</span>
+    </div>
+  </section>
+
+  <!-- COMPACT CARDS -->
+  <div class="panels">
+    <section class="card">
+      <h2>Upcoming time turns <span class="hint">Add to Date 2 · after today</span></h2>
+      <div id="timeCards" class="level-list"></div>
+    </section>
+    <section class="card">
+      <h2>Ahead price extensions <span class="hint">P2 + r×(P2−P1) · not yet reached</span></h2>
+      <div id="priceCards" class="level-list"></div>
+    </section>
+  </div>
+
+  <!-- PIVOTS (collapsed-ish but open by default for picker usefulness — keep compact) -->
+  <details class="collapse" open>
+    <summary>Pivot picker</summary>
+    <div class="scroll-box">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>H/L</th>
+            <th>Price</th>
+            <th>Close</th>
+            <th>Set</th>
+          </tr>
+        </thead>
+        <tbody id="pivotBody">
+          <tr><td colspan="5" style="text-align:left;color:var(--muted)">Enter a ticker and click Load</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Click a row: 1st = Date1/Price1, 2nd = Date2/Price2. Or use the buttons / dropdowns. Pivots are swing highs/lows (lookback 5).</p>
+  </details>
+
+  <details class="collapse" id="fullTimeDetails">
+    <summary>Show full time table</summary>
+    <div class="scroll-box tall">
+      <table>
+        <thead>
+          <tr>
+            <th>Ratio</th>
+            <th>Days</th>
+            <th>Weeks</th>
+            <th>Months</th>
+            <th>Years</th>
+            <th>Add to Date 1</th>
+            <th>Add to Date 2</th>
+          </tr>
+        </thead>
+        <tbody id="timeBody"></tbody>
+      </table>
+    </div>
+    <p class="note">Calendar days. Weeks = days÷7. Months = days÷29.5. Years = days÷365. Days column is rounded; Add-to dates use floor(ratio × base days).</p>
+  </details>
+
+  <details class="collapse">
+    <summary>All price extensions (full ratio set)</summary>
+    <div class="scroll-box">
+      <table>
+        <thead>
+          <tr>
+            <th>Ratio</th>
+            <th>Extend beyond P2</th>
+          </tr>
+        </thead>
+        <tbody id="priceBody"></tbody>
+      </table>
+    </div>
+    <p class="note">Extension = P2 + r×(P2−P1). Leave P1 blank to hide levels.</p>
+  </details>
+
+  <details class="collapse">
+    <summary>Square of 9 — degrees off pivots</summary>
+    <p class="note" style="margin-top:0">From Price 1 and Price 2. Levels every 45° out to 1480° using (√P ± °/180)². Cardinal 90/180/270 highlighted; full circles (360·n) in red.</p>
+    <div class="sq9-grid">
+      <div class="sq9-card">
+        <h3 id="sq9LowTitle">Off pivot low (Price 1)</h3>
+        <div class="scroll-box tall">
+          <table>
+            <thead><tr><th>°</th><th>Up</th><th>Down</th></tr></thead>
+            <tbody id="sq9LowBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sq9-card">
+        <h3 id="sq9HighTitle">Off pivot high (Price 2)</h3>
+        <div class="scroll-box tall">
+          <table>
+            <thead><tr><th>°</th><th>Up</th><th>Down</th></tr></thead>
+            <tbody id="sq9HighBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <h2 style="margin-top:1.25rem;font-size:0.95rem;color:var(--accent)">Fib √-step</h2>
+    <div class="sq9-row">
+      <div>
+        <label for="sqPrice">Anchor price</label>
+        <input type="number" id="sqPrice" step="0.01" value="221.90" />
+      </div>
+      <div>
+        <label for="sqFib">Fib step</label>
+        <input type="number" id="sqFib" step="0.001" value="0.382" />
+      </div>
+    </div>
+    <div class="sq9-out" id="sqOut"></div>
+    <p class="note">(√Price − step)² — e.g. (√221.90 − 0.382)² ≈ 210.66.</p>
+  </details>
+
+<script>
+const RATIOS = [
+  0.272, 0.382, 0.414, 0.500, 0.618, 0.707, 0.786, 0.841,
+  1.000, 1.272, 1.382, 1.414, 1.500, 1.618, 1.707, 1.786, 1.841,
+  2.000, 2.272, 2.382, 2.414, 2.500, 2.618, 2.707, 2.786, 2.841,
+  3.000, 3.272
+];
+const WHOLE = new Set([1, 2, 3]);
+const MAIN = new Set([0.382, 0.5, 0.618, 1.0, 1.382, 1.5, 1.618, 2.5, 2.618]);
+/** Key levels labeled on chart and featured in compact cards */
+const KEY_RATIOS = [0.382, 0.5, 0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+const KEY_SET = new Set(KEY_RATIOS);
+
+/** Start of today in UTC (ms), from browser local "now". */
+function todayUTCMs() {
+  const n = new Date();
+  return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+}
+function isFutureDate(dt) {
+  return ms(dt) > todayUTCMs();
+}
+function getLastClose() {
+  if (!historyCache || !Array.isArray(historyCache.closes)) return null;
+  for (let i = historyCache.closes.length - 1; i >= 0; i--) {
+    const c = historyCache.closes[i];
+    if (c != null && Number.isFinite(c)) return c;
+  }
+  return null;
+}
+/** Extension still ahead of price in the swing direction (not yet crossed). */
+function isAheadExtension(ext, move, p2, lastClose) {
+  if (!Number.isFinite(ext) || !Number.isFinite(move) || move === 0) return false;
+  const ref = (lastClose != null && Number.isFinite(lastClose)) ? lastClose : p2;
+  if (move > 0) return ext > ref;
+  return ext < ref;
+}
+function upcomingTimeRows(rows) {
+  return rows.filter(row => KEY_SET.has(row.r) && isFutureDate(row.add2));
+}
+function aheadKeyExtensions(p1, p2, move, lastClose) {
+  return KEY_RATIOS
+    .map(r => ({ r, ext: p2 + r * move }))
+    .filter(x => isAheadExtension(x.ext, move, p2, lastClose));
+}
+
+const isFileProtocol = location.protocol === "file:";
+if (isFileProtocol) {
+  document.getElementById("fileNote").style.display = "block";
+}
+
+let pivotsCache = [];
+let historyCache = null; // {dates, closes, highs, lows, ticker}
+let clickPhase = 0;
+let selIdx1 = -1;
+let selIdx2 = -1;
+let fibChart = null; // unused (kept name); custom canvas used
+let chartDrawState = null;
+let chartResizeObs = null;
+
+function parseISO(s) {
+  const [y, m, d] = String(s).slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+function parseDate(el) {
+  return parseISO(el.value);
+}
+function ms(dt) {
+  return dt instanceof Date ? dt.getTime() : parseISO(dt).getTime();
+}
+function fmtDate(dt) {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${dt.getUTCDate()}-${months[dt.getUTCMonth()]}-${dt.getUTCFullYear()}`;
+}
+function addDays(dt, n) {
+  const out = new Date(dt.getTime());
+  out.setUTCDate(out.getUTCDate() + n);
+  return out;
+}
+function dayDiff(a, b) {
+  return Math.round((ms(b) - ms(a)) / 86400000);
+}
+function ratioClass(r) {
+  if (WHOLE.has(r)) return "whole";
+  if (MAIN.has(r)) return "main";
+  return "";
+}
+function fmtRatio(r) {
+  return Number(r).toFixed(3);
+}
+
+function fmtPipDate(dt) {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const yy = String(dt.getUTCFullYear()).slice(-2);
+  return `${dt.getUTCDate()}${months[dt.getUTCMonth()]}${yy}`;
+}
+
+function clusterExtensions(levels, tolPct) {
+  if (!levels.length) return [];
+  const sorted = [...levels].sort((a, b) => a.ext - b.ext);
+  const clusters = [];
+  let cur = { items: [sorted[0]], lo: sorted[0].ext, hi: sorted[0].ext };
+  for (let i = 1; i < sorted.length; i++) {
+    const x = sorted[i];
+    const mid = (cur.lo + cur.hi) / 2;
+    const tol = Math.abs(mid) * tolPct;
+    if (Math.abs(x.ext - mid) <= Math.max(tol, Math.abs(mid) * 0.0005)) {
+      cur.items.push(x);
+      cur.lo = Math.min(cur.lo, x.ext);
+      cur.hi = Math.max(cur.hi, x.ext);
+    } else {
+      clusters.push(cur);
+      cur = { items: [x], lo: x.ext, hi: x.ext };
+    }
+  }
+  clusters.push(cur);
+  return clusters.map(c => {
+    const ratios = c.items.map(i => i.r).sort((a, b) => a - b);
+    const mid = (c.lo + c.hi) / 2;
+    const isCluster = c.items.length > 1 || (c.hi - c.lo) > Math.abs(mid) * 0.0002;
+    return {
+      lo: c.lo,
+      hi: c.hi,
+      mid,
+      ratios,
+      labelPrice: mid,
+      isCluster: c.items.length > 1,
+      items: c.items,
+    };
+  });
+}
+
+function chartXRange(computed) {
+  const { d1, d2 } = computed;
+  const upcoming = computed.upcomingTime || upcomingTimeRows(computed.rows);
+  let farthest = ms(d2);
+  upcoming.forEach(row => { farthest = Math.max(farthest, ms(row.add2)); });
+  // Always leave future blank even if few upcoming turns
+  const lastHist = (historyCache && historyCache.dates && historyCache.dates.length)
+    ? ms(parseISO(historyCache.dates[historyCache.dates.length - 1]))
+    : todayUTCMs();
+  farthest = Math.max(farthest, lastHist + 45 * 86400000);
+  const padBefore = 10 * 86400000;
+  const padAfter = 18 * 86400000;
+  return {
+    min: Math.min(ms(d1), ms(d2), lastHist) - padBefore,
+    max: farthest + padAfter,
+    lastHist,
+  };
+}
+
+function chartYRange(computed, priceInfo, xr) {
+  let lo = Infinity;
+  let hi = -Infinity;
+  if (priceInfo) {
+    const { p1, p2, ahead } = priceInfo;
+    lo = Math.min(p1, p2);
+    hi = Math.max(p1, p2);
+    const levels = Array.isArray(ahead) ? ahead : [];
+    levels.forEach(({ ext }) => {
+      lo = Math.min(lo, ext);
+      hi = Math.max(hi, ext);
+    });
+  }
+  if (historyCache && historyCache.dates) {
+    for (let i = 0; i < historyCache.dates.length; i++) {
+      const t = ms(parseISO(historyCache.dates[i]));
+      if (t < xr.min || t > xr.max) continue;
+      const c = historyCache.closes[i];
+      if (c == null || !Number.isFinite(c)) continue;
+      lo = Math.min(lo, c);
+      hi = Math.max(hi, c);
+      const h = historyCache.highs[i];
+      const l = historyCache.lows[i];
+      if (h != null && Number.isFinite(h)) hi = Math.max(hi, h);
+      if (l != null && Number.isFinite(l)) lo = Math.min(lo, l);
+    }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
+    lo = 0; hi = 100;
+  }
+  const pad = (hi - lo) * 0.08 || 1;
+  return { min: lo - pad, max: hi + pad };
+}
+
+function closeSeries(xr) {
+  if (!historyCache || !historyCache.dates) return [];
+  const pts = [];
+  for (let i = 0; i < historyCache.dates.length; i++) {
+    const t = ms(parseISO(historyCache.dates[i]));
+    if (t < xr.min - 3 * 86400000 || t > xr.max) continue;
+    const c = historyCache.closes[i];
+    if (c == null || !Number.isFinite(c)) continue;
+    pts.push({ x: t, y: c });
+  }
+  return pts;
+}
+
+function setupChartCanvas() {
+  const canvas = document.getElementById("fibChart");
+  if (!chartResizeObs) {
+    chartResizeObs = new ResizeObserver(() => {
+      if (chartDrawState) drawFibChart(chartDrawState.computed, chartDrawState.priceInfo);
+    });
+    chartResizeObs.observe(canvas.parentElement);
+    window.addEventListener("resize", () => {
+      if (chartDrawState) drawFibChart(chartDrawState.computed, chartDrawState.priceInfo);
+    });
+  }
+  return canvas;
+}
+
+function drawFibChart(computed, priceInfo) {
+  const canvas = setupChartCanvas();
+  const wrap = canvas.parentElement;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const cssW = wrap.clientWidth || 800;
+  const cssH = wrap.clientHeight || 480;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const pad = { top: 56, right: 138, bottom: 74, left: 54 };
+  const plotW = cssW - pad.left - pad.right;
+  const plotH = cssH - pad.top - pad.bottom;
+  const xr = chartXRange(computed);
+  const yr = chartYRange(computed, priceInfo, xr);
+  const closes = closeSeries(xr);
+  const upcoming = computed.upcomingTime || upcomingTimeRows(computed.rows);
+  const ahead = (priceInfo && Array.isArray(priceInfo.ahead)) ? priceInfo.ahead : [];
+  const clusters = clusterExtensions(ahead, 0.0015);
+
+  const xTo = (t) => pad.left + ((t - xr.min) / (xr.max - xr.min)) * plotW;
+  const yTo = (p) => pad.top + ((yr.max - p) / (yr.max - yr.min)) * plotH;
+
+  // Background
+  ctx.fillStyle = "#0b1016";
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  // Future margin wash (right of last history / today)
+  const futureStart = Math.max(xr.lastHist || todayUTCMs(), todayUTCMs());
+  const fx0 = Math.max(pad.left, xTo(futureStart));
+  if (fx0 < pad.left + plotW) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.025)";
+    ctx.fillRect(fx0, pad.top, pad.left + plotW - fx0, plotH);
+    ctx.strokeStyle = "rgba(201, 162, 39, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(fx0, pad.top);
+    ctx.lineTo(fx0, pad.top + plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(201, 162, 39, 0.75)";
+    ctx.font = "600 10px Segoe UI, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("future", fx0 + 6, pad.top + 12);
+  }
+
+  // Plot frame
+  ctx.strokeStyle = "#2d3a47";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(pad.left, pad.top, plotW, plotH);
+
+  // Y grid + left price ticks
+  ctx.font = "11px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  const yTicks = 6;
+  for (let i = 0; i <= yTicks; i++) {
+    const p = yr.min + (i / yTicks) * (yr.max - yr.min);
+    const y = yTo(p);
+    ctx.strokeStyle = "rgba(45, 58, 71, 0.55)";
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+    ctx.fillStyle = "#8b9aab";
+    ctx.fillText(p.toFixed(2), pad.left - 6, y);
+  }
+
+  // X date ticks (sparse)
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const xTicks = 7;
+  for (let i = 0; i <= xTicks; i++) {
+    const t = xr.min + (i / xTicks) * (xr.max - xr.min);
+    const x = xTo(t);
+    ctx.strokeStyle = "rgba(45, 58, 71, 0.4)";
+    ctx.beginPath();
+    ctx.moveTo(x, pad.top + plotH);
+    ctx.lineTo(x, pad.top + plotH + 4);
+    ctx.stroke();
+    ctx.fillStyle = "#8b9aab";
+    ctx.font = "10px Segoe UI, system-ui, sans-serif";
+    ctx.fillText(fmtPipDate(new Date(t)), x, pad.top + plotH + 36);
+  }
+
+  // Extension bands / horizontals (full width into future margin)
+  clusters.forEach(cl => {
+    const y1 = yTo(cl.hi);
+    const y2 = yTo(cl.lo);
+    if (cl.isCluster) {
+      ctx.fillStyle = "rgba(232, 197, 71, 0.12)";
+      ctx.fillRect(pad.left, Math.min(y1, y2) - 2, plotW, Math.abs(y2 - y1) + 4);
+    }
+    const y = yTo(cl.mid);
+    ctx.strokeStyle = cl.isCluster ? "rgba(232, 197, 71, 0.95)" : "rgba(232, 197, 71, 0.75)";
+    ctx.lineWidth = cl.isCluster ? 1.6 : 1.1;
+    ctx.setLineDash(cl.isCluster ? [] : [6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Right-edge TradingView-style label
+    const ratioTxt = cl.isCluster
+      ? cl.ratios.map(r => r.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")).join("/")
+      : cl.ratios[0].toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+    const priceTxt = cl.isCluster
+      ? `${cl.lo.toFixed(2)}–${cl.hi.toFixed(2)}`
+      : cl.mid.toFixed(2);
+    const tag = cl.isCluster ? "target" : "EX";
+    const label = `${priceTxt} ${tag} ${ratioTxt}`;
+    ctx.font = "600 11px Segoe UI, system-ui, sans-serif";
+    const tw = ctx.measureText(label).width;
+    const bx = pad.left + plotW + 4;
+    const by = y;
+    const bh = 16;
+    const bw = Math.min(tw + 10, pad.right - 6);
+    ctx.fillStyle = cl.isCluster ? "rgba(232, 197, 71, 0.92)" : "rgba(40, 48, 58, 0.95)";
+    ctx.strokeStyle = "rgba(232, 197, 71, 0.85)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx, by - bh / 2, bw, bh, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = cl.isCluster ? "#1a1400" : "#f3e7a8";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, bx + 5, by, bw - 8);
+  });
+
+  // P1 / P2 faint anchors
+  if (priceInfo) {
+    [[priceInfo.p1, "#ffc078"], [priceInfo.p2, "#7dffb0"]].forEach(([p, col]) => {
+      if (!Number.isFinite(p)) return;
+      const y = yTo(p);
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(pad.left + plotW, y);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  // Close path (history only — stops before blank future)
+  if (closes.length > 1) {
+    ctx.strokeStyle = "#4ea8de";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    closes.forEach((pt, i) => {
+      const x = xTo(pt.x);
+      const y = yTo(pt.y);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // Swing anchors D1/D2 as markers on price path area
+  const { d1, d2 } = computed;
+  const p1 = priceInfo ? priceInfo.p1 : null;
+  const p2 = priceInfo ? priceInfo.p2 : null;
+  [
+    { t: ms(d1), p: p1, lab: "D1", col: "#ffc078" },
+    { t: ms(d2), p: p2, lab: "D2", col: "#7dffb0" },
+  ].forEach(a => {
+    const x = xTo(a.t);
+    if (x < pad.left || x > pad.left + plotW) return;
+    // faint full-height guide
+    ctx.strokeStyle = a.col + "33";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, pad.top);
+    ctx.lineTo(x, pad.top + plotH);
+    ctx.stroke();
+    if (Number.isFinite(a.p)) {
+      const y = yTo(a.p);
+      ctx.fillStyle = a.col;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = a.col;
+      ctx.font = "700 10px Segoe UI, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(a.lab, x + 6, y - 4);
+    }
+  });
+
+  // Time pips top & bottom (upcoming only) + faint vertical guide
+  upcoming.forEach((row, idx) => {
+    const x = xTo(ms(row.add2));
+    if (x < pad.left - 2 || x > pad.left + plotW + 2) return;
+    // faint guide
+    ctx.strokeStyle = "rgba(201, 162, 39, 0.18)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x, pad.top);
+    ctx.lineTo(x, pad.top + plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const dateStr = fmtPipDate(row.add2);
+    const ratioStr = fmtRatio(row.r).replace(/0+$/, "").replace(/\.$/, "");
+    const dayStr = String(row.daysRounded);
+    drawTimePip(ctx, x, pad.top, "top", dateStr, ratioStr, dayStr, idx);
+    drawTimePip(ctx, x, pad.top + plotH, "bottom", dateStr, ratioStr, dayStr, idx);
+  });
+
+  // Corner title
+  ctx.fillStyle = "#8b9aab";
+  ctx.font = "11px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  const tkr = (historyCache && historyCache.ticker) || document.getElementById("ticker").value || "";
+  ctx.fillText(tkr ? `${tkr} · Fib time & EX` : "Fib time & EX", pad.left + 6, 8);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function drawTimePip(ctx, x, edgeY, side, dateStr, ratioStr, dayStr, idx) {
+  const outward = side === "top" ? -1 : 1;
+  const tick = 7;
+  ctx.strokeStyle = "#c9a227";
+  ctx.fillStyle = "#c9a227";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, edgeY);
+  ctx.lineTo(x, edgeY + outward * tick);
+  ctx.stroke();
+  // diamond pip
+  ctx.beginPath();
+  ctx.moveTo(x, edgeY);
+  ctx.lineTo(x - 3.5, edgeY + outward * 3.5);
+  ctx.lineTo(x, edgeY + outward * 7);
+  ctx.lineTo(x + 3.5, edgeY + outward * 3.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // stagger labels slightly when dense
+  const stagger = (idx % 3) * 2;
+  ctx.font = "600 10px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  if (side === "top") {
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = "#e8d48b";
+    ctx.fillText(dateStr, x, edgeY - tick - 12 - stagger);
+    ctx.fillStyle = "#a89040";
+    ctx.font = "10px Segoe UI, system-ui, sans-serif";
+    ctx.fillText(`${ratioStr} · ${dayStr}d`, x, edgeY - tick - 1 - stagger);
+  } else {
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#e8d48b";
+    ctx.fillText(dateStr, x, edgeY + tick + 2 + stagger);
+    ctx.fillStyle = "#a89040";
+    ctx.font = "10px Segoe UI, system-ui, sans-serif";
+    ctx.fillText(`${ratioStr} · ${dayStr}d`, x, edgeY + tick + 13 + stagger);
+  }
+}
+
+
+function renderTime() {
+  const d1 = parseDate(document.getElementById("d1"));
+  const d2 = parseDate(document.getElementById("d2"));
+  const base = dayDiff(d1, d2);
+  const absBase = Math.abs(base);
+  const sign = base >= 0 ? 1 : -1;
+
+  document.getElementById("sumD1").textContent = fmtDate(d1);
+  document.getElementById("sumD2").textContent = fmtDate(d2);
+  document.getElementById("sumDays").textContent = String(base);
+  document.getElementById("sumSpanMeta").textContent =
+    `${(absBase / 7).toFixed(2)} wk · ${(absBase / 29.5).toFixed(2)} mo · ${(absBase / 365).toFixed(2)} yr`;
+
+  const p1v = document.getElementById("p1").value;
+  const p2v = document.getElementById("p2").value;
+  document.getElementById("sumP1").textContent = p1v !== "" ? Number(p1v).toFixed(2) : "—";
+  document.getElementById("sumP2").textContent = p2v !== "" ? Number(p2v).toFixed(2) : "—";
+
+  const rows = RATIOS.map(r => {
+    const raw = r * absBase;
+    const daysRounded = Math.round(raw);
+    const offset = Math.floor(raw) * sign;
+    return {
+      r,
+      daysRounded,
+      weeks: daysRounded / 7,
+      months: daysRounded / 29.5,
+      years: daysRounded / 365,
+      add1: addDays(d1, offset),
+      add2: addDays(d2, offset),
+    };
+  });
+
+  document.getElementById("timeBody").innerHTML = rows.map(row => `
+    <tr class="${ratioClass(row.r)}">
+      <td>${fmtRatio(row.r)}</td>
+      <td>${row.daysRounded}</td>
+      <td>${row.weeks.toFixed(2)}</td>
+      <td>${row.months.toFixed(2)}</td>
+      <td>${row.years.toFixed(2)}</td>
+      <td>${fmtDate(row.add1)}</td>
+      <td>${fmtDate(row.add2)}</td>
+    </tr>`).join("");
+
+  const upcoming = upcomingTimeRows(rows);
+  const timeCards = document.getElementById("timeCards");
+  if (!upcoming.length) {
+    timeCards.innerHTML = `<div class="empty">No upcoming time turns after today.</div>`;
+  } else {
+    timeCards.innerHTML = upcoming.map(row => `
+      <div class="level-row">
+        <span class="ratio">${fmtRatio(row.r)}</span>
+        <span class="date">${fmtDate(row.add2)}</span>
+        <span class="meta">${row.daysRounded}d from Date 2</span>
+      </div>`).join("");
+  }
+
+  return { d1, d2, base, absBase, rows, upcomingTime: upcoming };
+}
+
+function renderPrice() {
+  const p1Raw = document.getElementById("p1").value;
+  const p2Raw = document.getElementById("p2").value;
+  const body = document.getElementById("priceBody");
+  const cards = document.getElementById("priceCards");
+  if (p1Raw === "" || p2Raw === "") {
+    body.innerHTML = `<tr><td colspan="2" style="text-align:left;color:var(--muted)">Enter Price 1 and Price 2</td></tr>`;
+    cards.innerHTML = `<div class="empty">Enter both prices for extensions.</div>`;
+    return null;
+  }
+  const p1 = Number(p1Raw);
+  const p2 = Number(p2Raw);
+  const move = p2 - p1;
+  const lastClose = getLastClose();
+
+  const allExt = RATIOS.map(r => ({ r, ext: p2 + r * move }));
+  body.innerHTML = allExt.map(x => `
+    <tr class="${ratioClass(x.r)}">
+      <td>${fmtRatio(x.r)}</td>
+      <td>${x.ext.toFixed(2)}</td>
+    </tr>`).join("");
+
+  const ahead = aheadKeyExtensions(p1, p2, move, lastClose);
+  if (!ahead.length) {
+    cards.innerHTML = `<div class="empty">No ahead extension levels vs current price.</div>`;
+  } else {
+    cards.innerHTML = ahead.map(x => `
+      <div class="level-row">
+        <span class="ratio">${fmtRatio(x.r)}</span>
+        <span class="price">${x.ext.toFixed(2)}</span>
+        <span class="meta">EX beyond P2</span>
+      </div>`).join("");
+  }
+
+  return { p1, p2, move, lastClose, ahead, allExt };
+}
+
+function sq9Degrees() {
+  const degs = [];
+  for (let d = 45; d <= 1480; d += 45) degs.push(d);
+  if (degs[degs.length - 1] !== 1480) degs.push(1480);
+  return degs;
+}
+function sq9RowClass(deg) {
+  if (deg % 360 === 0) return "fullcircle";
+  if (deg % 90 === 0) return "cardinal";
+  return "";
+}
+function sq9LevelTable(anchor) {
+  if (!Number.isFinite(anchor) || anchor <= 0) {
+    return `<tr><td colspan="3" style="text-align:left;color:var(--muted)">Need a positive pivot price</td></tr>`;
+  }
+  const root = Math.sqrt(anchor);
+  return sq9Degrees().map(deg => {
+    const step = deg / 180;
+    const up = Math.pow(root + step, 2);
+    const downRaw = root - step;
+    const down = downRaw > 0 ? Math.pow(downRaw, 2) : null;
+    return `<tr class="${sq9RowClass(deg)}">
+      <td>${deg}</td>
+      <td>${up.toFixed(2)}</td>
+      <td>${down == null ? "—" : down.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+}
+function renderSq9Ladders() {
+  const p1 = Number(document.getElementById("p1").value);
+  const p2 = Number(document.getElementById("p2").value);
+  const lowTitle = document.getElementById("sq9LowTitle");
+  const highTitle = document.getElementById("sq9HighTitle");
+  lowTitle.textContent = (Number.isFinite(p1) && p1 > 0)
+    ? `Off pivot low (Price 1) @ ${p1.toFixed(2)}`
+    : "Off pivot low (Price 1)";
+  highTitle.textContent = (Number.isFinite(p2) && p2 > 0)
+    ? `Off pivot high (Price 2) @ ${p2.toFixed(2)}`
+    : "Off pivot high (Price 2)";
+  document.getElementById("sq9LowBody").innerHTML = sq9LevelTable(p1);
+  document.getElementById("sq9HighBody").innerHTML = sq9LevelTable(p2);
+}
+function renderSq9() {
+  renderSq9Ladders();
+  const p = Number(document.getElementById("sqPrice").value);
+  const step = Number(document.getElementById("sqFib").value);
+  if (!Number.isFinite(p) || !Number.isFinite(step) || p <= 0) {
+    document.getElementById("sqOut").textContent = "Enter a positive anchor price.";
+    return;
+  }
+  const down = Math.pow(Math.sqrt(p) - step, 2);
+  const up = Math.pow(Math.sqrt(p) + step, 2);
+  document.getElementById("sqOut").innerHTML =
+    `Down: <strong>${down.toFixed(2)}</strong> &nbsp;|&nbsp; Up: <strong>${up.toFixed(2)}</strong>`;
+}
+
+
+function renderChart(computed, priceInfo) {
+  chartDrawState = { computed, priceInfo };
+  drawFibChart(computed, priceInfo);
+}
+
+function renderAll() {
+  const computed = renderTime();
+  const priceInfo = renderPrice();
+  renderSq9();
+  renderChart(computed, priceInfo);
+}
+
+function setStatus(msg, kind) {
+  const el = document.getElementById("loadStatus");
+  el.textContent = msg || "";
+  el.className = "status" + (kind ? " " + kind : "");
+}
+
+function applyPivot(idx, slot) {
+  const p = pivotsCache[idx];
+  if (!p) return;
+  if (slot === 1) {
+    document.getElementById("d1").value = p.date;
+    document.getElementById("p1").value = Number(p.price).toFixed(2);
+    selIdx1 = idx;
+    document.getElementById("pickStart").value = String(idx);
+  } else {
+    document.getElementById("d2").value = p.date;
+    document.getElementById("p2").value = Number(p.price).toFixed(2);
+    document.getElementById("sqPrice").value = Number(p.price).toFixed(2);
+    selIdx2 = idx;
+    document.getElementById("pickEnd").value = String(idx);
+  }
+  highlightSelections();
+  renderAll();
+}
+
+function highlightSelections() {
+  document.querySelectorAll("#pivotBody tr.pivot-row").forEach((tr) => {
+    const i = Number(tr.dataset.idx);
+    tr.classList.toggle("sel1", i === selIdx1);
+    tr.classList.toggle("sel2", i === selIdx2);
+  });
+}
+
+function onPivotRowClick(idx) {
+  if (clickPhase === 0) {
+    applyPivot(idx, 1);
+    clickPhase = 1;
+    setStatus("Date 1 set — click another pivot for Date 2 (or use buttons).", "ok");
+  } else {
+    applyPivot(idx, 2);
+    clickPhase = 0;
+    setStatus("Swing applied to calculator.", "ok");
+  }
+}
+
+function pivotOptionLabel(p) {
+  const tag = p.kind === "high" ? "H" : "L";
+  return `${p.date}  ${tag}  ${Number(p.price).toFixed(2)}`;
+}
+
+function fillPivotSelects() {
+  const start = document.getElementById("pickStart");
+  const end = document.getElementById("pickEnd");
+  const opts = pivotsCache.map((p, i) =>
+    `<option value="${i}">${pivotOptionLabel(p)}</option>`
+  ).join("");
+  start.innerHTML = `<option value="">— choose start —</option>` + opts;
+  end.innerHTML = `<option value="">— choose end —</option>` + opts;
+  start.disabled = end.disabled = pivotsCache.length === 0;
+}
+
+function renderPivotTable() {
+  const body = document.getElementById("pivotBody");
+  if (!pivotsCache.length) {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:left;color:var(--muted)">No pivots</td></tr>`;
+    return;
+  }
+  const order = [...pivotsCache.keys()].reverse();
+  body.innerHTML = order.map((i) => {
+    const p = pivotsCache[i];
+    const kl = p.kind === "high" ? "kind-high" : "kind-low";
+    const tag = p.kind === "high" ? "High" : "Low";
+    return `<tr class="pivot-row" data-idx="${i}">
+      <td>${p.date}</td>
+      <td class="${kl}">${tag}</td>
+      <td>${Number(p.price).toFixed(2)}</td>
+      <td>${Number(p.close).toFixed(2)}</td>
+      <td class="actions">
+        <button type="button" class="mini d1" data-use="1" data-idx="${i}">Date 1</button>
+        <button type="button" class="mini d2" data-use="2" data-idx="${i}">Date 2</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  body.querySelectorAll("tr.pivot-row").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      onPivotRowClick(Number(tr.dataset.idx));
+    });
+  });
+  body.querySelectorAll("button[data-use]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyPivot(Number(btn.dataset.idx), Number(btn.dataset.use));
+      clickPhase = 0;
+      setStatus("Swing point applied.", "ok");
+    });
+  });
+  highlightSelections();
+}
+
+function applySuggested(sug) {
+  if (!sug || !sug.date1 || !sug.date2) return;
+  const i1 = pivotsCache.findIndex((p) => p.date === sug.date1 && Math.abs(p.price - sug.price1) < 0.02);
+  const i2 = pivotsCache.findIndex((p) => p.date === sug.date2 && Math.abs(p.price - sug.price2) < 0.02);
+  document.getElementById("d1").value = sug.date1;
+  document.getElementById("d2").value = sug.date2;
+  document.getElementById("p1").value = Number(sug.price1).toFixed(2);
+  document.getElementById("p2").value = Number(sug.price2).toFixed(2);
+  document.getElementById("sqPrice").value = Number(sug.price2).toFixed(2);
+  selIdx1 = i1;
+  selIdx2 = i2;
+  if (i1 >= 0) document.getElementById("pickStart").value = String(i1);
+  if (i2 >= 0) document.getElementById("pickEnd").value = String(i2);
+  const hint = document.getElementById("suggestedHint");
+  hint.hidden = false;
+  hint.innerHTML = `Suggested swing: <strong>${sug.date1}</strong> → <strong>${sug.date2}</strong>` +
+    ` (${Number(sug.price1).toFixed(2)} → ${Number(sug.price2).toFixed(2)})` +
+    (sug.label ? ` · ${sug.label}` : "");
+  highlightSelections();
+  renderAll();
+}
+
+async function loadHistory(ticker, period) {
+  const url = `/api/history?ticker=${encodeURIComponent(ticker)}&period=${encodeURIComponent(period)}`;
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    historyCache = null;
+    return;
+  }
+  historyCache = data;
+}
+
+async function loadTicker() {
+  if (isFileProtocol) {
+    setStatus("Start the server first (./run.sh) — file:// cannot call the API.", "err");
+    return;
+  }
+  const raw = document.getElementById("ticker").value.trim().toUpperCase();
+  const period = document.getElementById("period").value;
+  if (!raw) {
+    setStatus("Enter a ticker symbol (e.g. RSP).", "err");
+    return;
+  }
+  document.getElementById("ticker").value = raw;
+  const btn = document.getElementById("loadBtn");
+  btn.disabled = true;
+  setStatus(`Loading ${raw}…`);
+  clickPhase = 0;
+  selIdx1 = selIdx2 = -1;
+  try {
+    const url = `/api/pivots?ticker=${encodeURIComponent(raw)}&period=${encodeURIComponent(period)}`;
+    const [pivRes, ] = await Promise.all([
+      fetch(url).then(async (res) => ({ res, data: await res.json().catch(() => ({})) })),
+      loadHistory(raw, period).catch(() => { historyCache = null; }),
+    ]);
+    const { res, data } = pivRes;
+    if (!res.ok) {
+      pivotsCache = [];
+      renderPivotTable();
+      fillPivotSelects();
+      document.getElementById("suggestedHint").hidden = true;
+      setStatus(data.error || `Error ${res.status}`, "err");
+      renderAll();
+      return;
+    }
+    pivotsCache = Array.isArray(data.pivots) ? data.pivots : [];
+    fillPivotSelects();
+    renderPivotTable();
+    if (data.suggested) {
+      applySuggested(data.suggested);
+      setStatus(`Loaded ${data.ticker}: ${pivotsCache.length} pivots. Suggested swing applied.`, "ok");
+    } else {
+      document.getElementById("suggestedHint").hidden = true;
+      setStatus(`Loaded ${data.ticker}: ${pivotsCache.length} pivots.`, "ok");
+      renderAll();
+    }
+  } catch (e) {
+    setStatus(`Request failed: ${e.message}. Is the server running?`, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("loadBtn").addEventListener("click", loadTicker);
+document.getElementById("ticker").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    loadTicker();
+  }
+});
+document.getElementById("pickStart").addEventListener("change", (e) => {
+  const v = e.target.value;
+  if (v !== "") applyPivot(Number(v), 1);
+});
+document.getElementById("pickEnd").addEventListener("change", (e) => {
+  const v = e.target.value;
+  if (v !== "") applyPivot(Number(v), 2);
+});
+
+["d1","d2","p1","p2","sqPrice","sqFib"].forEach(id => {
+  document.getElementById(id).addEventListener("input", renderAll);
+});
+renderAll();
+</script>
+</body>
+</html>
