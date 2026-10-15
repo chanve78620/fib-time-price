@@ -99,9 +99,8 @@ if __name__ == "__main__" and "--levels" not in sys.argv:
 #   python verify.py --levels http://127.0.0.1:8765 [TICKER ...]
 # Needs the server running and `pip install playwright` (uses system Chrome
 # if PLAYWRIGHT_CHROME is set, else playwright's bundled Chromium).
-# Rule: a drawn level is invalid if any bar after its anchor pivot (for a
-# tentative anchor: any bar after the previous confirmed pivot) has
-# low <= level <= high.
+# Rule: a drawn level is invalid if any bar after its anchor pivot (the bar
+# where the level becomes defined, tentative or not) has low <= level <= high.
 def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) -> int:
     import json
     import os
@@ -136,7 +135,7 @@ def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) ->
             bad = []
             for lv in info["levels"]:
                 a = idx[lv["anchor"]]
-                start = idx[conf[-1]] + 1 if lv["tent"] and conf else a + 1
+                start = a + 1
                 for j in range(start, len(dates)):
                     if hi[j] is not None and lo[j] <= lv["price"] <= hi[j]:
                         bad.append(f"{lv['txt']} (anchor {lv['anchor']}) touched {dates[j]} [{lo[j]}-{hi[j]}]")

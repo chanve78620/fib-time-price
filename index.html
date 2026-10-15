@@ -265,13 +265,13 @@ function computeLevels(){
   for(let i=n-1;i>=0;i--){ sufH[i]=Math.max(D.h[i],sufH[i+1]); sufL[i]=Math.min(D.l[i],sufL[i+1]); }
   // A level is "hit" once ANY later bar's high-low range touches it (low <= level <= high).
   // Check starts at the bar after the anchor pivot; the anchor bar itself counts when the
-  // level lies between its extreme and its close (traded after the extreme). If the anchor
-  // is the tentative (unconfirmed) pivot of the swing in progress, check every bar since the
-  // previous confirmed pivot instead, since the swing itself traded through those prices.
-  const prevConf = P.length>1 ? P[P.length-2].i : 0;
-  const hitFrom=(A)=> A.tent ? prevConf+1 : A.i+1;
+  // level lies between its extreme and its close (traded after the extreme). This applies
+  // to the tentative (in-progress) pivot too: a level becomes defined at its anchor bar, so
+  // bars before it never count (Ret levels of the swing into the tentative low are targets
+  // for the bounce, as in Dynamic Trader, until price actually reaches them).
+  const hitFrom=(A)=> A.i+1;
   const hit=(A, lvl)=>{
-    if(!A.tent){ const c=D.c[A.i]; if(lvl>=Math.min(c,A.price) && lvl<=Math.max(c,A.price) && lvl!==A.price) return true; }
+    { const c=D.c[A.i]; if(lvl>=Math.min(c,A.price) && lvl<=Math.max(c,A.price) && lvl!==A.price) return true; }
     for(let j=hitFrom(A);j<n;j++){ if(D.l[j]<=lvl && lvl<=D.h[j]) return true;
       if(j>0 && ((D.h[j-1]<lvl && D.l[j]>lvl) || (D.l[j-1]>lvl && D.h[j]<lvl))) return true; } // gapped through
     return false; };
