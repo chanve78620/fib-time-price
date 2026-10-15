@@ -55,7 +55,7 @@
     <label for="depth" title="How many recent pivots are used as anchors for price and time projections">Depth</label>
     <input type="number" id="depth" min="2" max="10" value="5" />
     <label for="maxLv" title="Max number of price level lines (closest to the last price)">Lines</label>
-    <input type="number" id="maxLv" min="4" max="200" value="24" style="width:46px" />
+    <input type="number" id="maxLv" min="4" max="200" value="14" style="width:46px" />
     <label for="tol" title="Max width of a confluence zone, % of price">Zone %</label>
     <input type="number" id="tol" min="0.05" max="2" step="0.05" value="0.25" />
   </div>
@@ -64,8 +64,9 @@
     <span class="chk"><input type="checkbox" id="showRet" checked /><label for="showRet" style="color:#2632b8">Ret</label></span>
     <span class="chk"><input type="checkbox" id="showEx" checked /><label for="showEx" style="color:#0a7a1f">EX</label></span>
     <span class="chk"><input type="checkbox" id="showApp" checked /><label for="showApp" style="color:#d01010">App</label></span>
+    <span class="chk"><input type="checkbox" id="appAll" /><label for="appAll" title="Also App 0.618 and 1.618 (DT default shows App 1.000)">App .618/1.618</label></span>
     <span class="chk"><input type="checkbox" id="showZones" checked /><label for="showZones"><b>Zones</b></label></span>
-    <span class="chk"><input type="checkbox" id="showMA" checked /><label for="showMA">MA</label></span>
+    <span class="chk"><input type="checkbox" id="showMA" checked /><label for="showMA" title="EMA 5/13 solid, EMA 8/21 dotted">EMA</label></span>
     <span class="chk"><input type="checkbox" id="showPiv" checked /><label for="showPiv">Pivots</label></span>
     <span class="chk"><input type="checkbox" id="showAll" /><label for="showAll" title="Also show levels already traded through">Hit lvls</label></span>
   </div>
@@ -75,10 +76,13 @@
     <select id="dtpTarget" title="Which turn the time projections are for">
       <option value="auto">Auto</option><option value="low">Low</option><option value="high">High</option><option value="both">Both</option>
     </select>
-    <label for="band" title="Width (σ, in bars) of each time projection's band">Band</label>
-    <input type="number" id="band" min="0.3" max="10" step="0.1" value="1.5" style="width:46px" />
-    <label for="dtpMin" title="Only show DTP bars at least this % of the strongest cluster">Min%</label>
-    <input type="number" id="dtpMin" min="0" max="95" step="5" value="75" style="width:46px" />
+    <select id="dtpUnit" title="DTP time unit on daily charts: calendar days (as Dynamic Trader) or trading bars"><option value="cal">Cal days</option><option value="bars">Bars</option></select>
+    <label for="band" title="Half-width of each time projection's triangular band (days / bars)">Band</label>
+    <input type="number" id="band" min="0.3" max="10" step="0.1" value="2" style="width:46px" />
+    <label for="dtpStart" title="Ignore projections closer than this many days/bars to the anchor pivot (fitted to DT: 6.5)">Start</label>
+    <input type="number" id="dtpStart" min="0" max="50" step="0.5" value="6.5" style="width:46px" />
+    <label for="dtpMin" title="Only show DTP bars at least this % of the strongest day (0 = full distribution, as DT)">Min%</label>
+    <input type="number" id="dtpMin" min="0" max="95" step="5" value="0" style="width:46px" />
     <label for="target">Target</label>
     <input type="number" id="target" step="any" placeholder="—" style="width:72px" />
   </div>
@@ -145,7 +149,8 @@ function fillPeriods(tf, want){
   sel.value = cfg.periods.some(p=>p[0]===want) ? want : cfg.def;
 }
 let FUT = 60;           // future slots generated (per timeframe)
-const MA_DEF = [{len:5,col:"#3a3ad0"},{len:10,col:"#d03a3a"},{len:20,col:"#3a8a3a"},{len:50,col:"#c040c0"}];
+// Exponential MAs 5/8/13/21 (Fibonacci lengths). 5 & 13 solid, 8 & 21 dotted.
+const MA_DEF = [{len:5,col:"#3a3ad0",dash:[]},{len:8,col:"#d03a3a",dash:[2,3]},{len:13,col:"#3a8a3a",dash:[]},{len:21,col:"#c040c0",dash:[2,3]}];
 // NYSE full-day holidays (approx) used to skip future dates
 const HOLI = new Set(["2026-11-26","2026-12-25","2027-01-01","2027-01-18","2027-02-15","2027-03-26","2027-05-31","2027-06-18","2027-07-05","2027-09-06","2027-11-25","2027-12-24","2028-01-17","2028-02-21","2028-04-14","2028-05-29","2028-06-19","2028-07-04","2028-09-04","2028-11-23","2028-12-25"]);
 
@@ -153,7 +158,8 @@ let D = null;        // data
 let P = [];          // pivots
 let LV = [];         // price levels (all computed)
 let ZN = [];         // zones
-let TP = {series:[], cnt:{}, src:{}, from:0, target:"low"}; // time projections
+let TP = {series:[], target:"low"};
+let PIVR = []; // drawn pivot-label rects (click toggles DTP inclusion) // time projections
 let MA = [];
 const view = { right: 0, count: 72, yZoom: 1, yShift: 0 };
 let hover = null;
@@ -164,7 +170,7 @@ let hover = null;
 function parseD(s){ const [dp,tp]=s.split("T"); const [y,m,d]=dp.split("-").map(Number); let hh=0,mm=0; if(tp){ [hh,mm]=tp.split(":").map(Number); } return new Date(Date.UTC(y,m-1,d,hh,mm)); }
 function isoD(dt){ return (D && D.intraday) ? dt.toISOString().slice(0,16) : dt.toISOString().slice(0,10); }
 function hhmm(d){ return `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`; }
-function dtLabel(s){ const d=parseD(s); const base=`${d.getUTCDate()}${MON[d.getUTCMonth()]}${String(d.getUTCFullYear()).slice(2)}`; return (D && D.intraday) ? `${base} ${hhmm(d)}` : base; }
+function dtLabel(s){ let d=parseD(s); if(D && D.tf==="1wk") d=new Date(d.getTime()+4*86400000); const base=`${MON[d.getUTCMonth()]} ${d.getUTCDate()}, ${String(d.getUTCFullYear()).slice(2)}`; return (D && D.intraday) ? `${base} ${hhmm(d)}` : base; }
 function decs(p){ const a=Math.abs(p); return a>=1000?2:a>=10?2:a>=1?3:5; }
 function fmt(p, d){ return Number(p).toFixed(d==null?decs(p):d); }
 function slotDate(i){ if(!D) return ""; if(i<D.n) return D.dates[i]; return D.future[i-D.n] || ""; }
@@ -222,20 +228,27 @@ function detectPivots(N){
     if(prev && prev.i===p.i && prev.kind!==p.kind){ out.push(p); continue; }
     out.push(p);
   }
+  // refine: each pivot = true extreme between its neighbouring opposite pivots (zigzag)
+  for(let j=0;j<out.length;j++){
+    const a=j>0?out[j-1].i+1:0, b=j+1<out.length?out[j+1].i-1:out[j].i; let best=out[j];
+    for(let k=a;k<=b;k++){ if(best.kind==="low" ? l[k]<best.price : h[k]>best.price) best={i:k,kind:best.kind,price:best.kind==="low"?l[k]:h[k]}; }
+    out[j]=best;
+  }
   // tentative tail: extend last pivot or add the extreme of the move since it
   if(out.length){
-    let last={...out[out.length-1]}; let cand=null;
+    let last={...out[out.length-1]}; let cand=null; let extended=false;
     for(let k=last.i+1;k<n;k++){
       if(last.kind==="high"){
-        if(h[k]>last.price){ last={i:k,kind:"high",price:h[k],tent:true}; cand=null; continue; }
+        if(h[k]>last.price){ last={i:k,kind:"high",price:h[k],tent:true}; cand=null; extended=true; continue; }
         if(!cand||l[k]<cand.price) cand={i:k,kind:"low",price:l[k],tent:true};
       } else {
-        if(l[k]<last.price){ last={i:k,kind:"low",price:l[k],tent:true}; cand=null; continue; }
+        if(l[k]<last.price){ last={i:k,kind:"low",price:l[k],tent:true}; cand=null; extended=true; continue; }
         if(!cand||h[k]>cand.price) cand={i:k,kind:"high",price:h[k],tent:true};
       }
     }
     out[out.length-1]=last;
-    if(cand) out.push(cand);
+    // a counter-move after an extended (still forming) pivot is not yet a swing
+    if(cand && !extended) out.push(cand);
   }
   for(let j=0;j<out.length;j++){
     const p=out[j], q=out[j-1];
@@ -284,7 +297,7 @@ function computeLevels(){
     const C=P[c];
     for(const [a,b] of [[c-2,c-1],[c-4,c-3]]){
       if(a<0) continue; const A=P[a],B=P[b]; const len=B.price-A.price;
-      for(const r of APP_R){ const pr=C.price+r*len; if(pr<=0) continue;
+      for(const r of ($("appAll").checked?APP_R:[1.0])){ const pr=C.price+r*len; if(pr<=0) continue;
         add({price:pr,type:"App",r,from:A,anchor:C,desc:`${dtLabel(A.date)}→${dtLabel(B.date)} from ${dtLabel(C.date)}`}); }
     }
   }
@@ -320,66 +333,81 @@ function zoneLabel(lo,hi){
 
 // ---------- time projections ----------
 // Dynamic Time Projections (after R. Miner, Dynamic Trading / DT software).
-// For a projected LOW (HIGH mirrored), counted in bars of the chart timeframe:
-//  (a) Time Retracements: 0.382–1.618 of the swings that end at the last HIGH,
-//      projected from that high (nearest + larger-degree swing starts);
-//  (b) Alternate Time Projections: 0.618/1.0/1.618 of the last 3 prior
-//      high→low swings, projected from the last high;
-//  (c) Trough-to-trough cycles: 0.618/1.0/1.272/1.618 of the last 3 low→low
-//      cycles, projected from the last low.
-// Each projection is spread as a small Gaussian band (σ = Band bars); the pane
-// is the frequency distribution, showing only bars ≥ Min % of the strongest.
-const DTP_TR=[0.382,0.5,0.618,0.786,1.0,1.272,1.618], DTP_ATP=[0.618,1.0,1.618], DTP_TT=[0.618,1.0,1.272,1.618];
+// Parameters were FITTED to digitized DT DTP histograms ($SPX-D 14-Oct-26 and
+// IWM-D 15-Oct-26, DT's own pivots; see fib-shots/dtp_fit.md: SPX r=0.99,
+// IWM r=0.95). For a projected LOW (HIGH mirrored), with H = last included high:
+//  (a) Time Retracement 0.382/0.618/1/1.618/2.618 of the last low→H swing, from H;
+//  (b) Alternate Time Projections 0.382…1.618 of the last two high→low swings, from H;
+//  (c) Crest-to-crest 0.618/1/1.618 of the last three high→high cycles, from H (weight ½).
+// Projections closer than Start (6.5) days to H are ignored (DT shows nothing
+// before H+6 in both refs). Daily charts count calendar days, as DT does; weekend
+// days are drawn as thin bars between Fri and Mon. Each projection is a triangle
+// of half-width Band (2); heights are proportional to the strongest day (Min% 0).
+// Click a pivot label to exclude/include it (DT pivots are chosen by the analyst).
+const DTP_TR=[0.382,0.618,1.0,1.618,2.618], DTP_ATP=[0.382,0.5,0.618,0.786,1.0,1.272,1.618], DTP_CC=[0.618,1.0,1.618], DTP_CC_W=0.5;
+let DTP_EX=new Set();
+function exKey(){ return D? `ftpEx:${D.ticker}:${D.tf}` : ""; }
+function loadEx(){ try{ DTP_EX=new Set(JSON.parse(localStorage.getItem(exKey())||"[]")); }catch(_){ DTP_EX=new Set(); } }
+function saveEx(){ try{ localStorage.setItem(exKey(), JSON.stringify([...DTP_EX])); }catch(_){} }
+function dtpDateLbl(q){ if(D.tf!=="1d") return dtLabel(q.date); const d=parseD(q.date); return `${WD[d.getUTCDay()]} ${dtLabel(q.date)}`; }
+function dtpCal(){ return D && D.tf==="1d" && $("dtpUnit").value==="cal"; }
+function dayNum(s){ return Math.round(parseD(s.slice(0,10)).getTime()/86400000); }
+function tcOf(i){ return dtpCal()? dayNum(slotDate(i)) : i; }
+function dtpUnitLbl(){ return dtpCal()? "d" : (D.tf==="1wk"?"Wk":"TB"); }
 function dtpFor(K, conf){
   const O=opp(K); let hI=-1;
   for(let j=conf.length-1;j>=0;j--){ if(conf[j].kind===O){ hI=j; break; } }
   if(hI<1) return null;
-  const H=conf[hI]; const proj=[]; const mind=Math.max(2,(+$("swing").value||3)+1);
-  const lbl=(p)=>dtLabel(p.date);
-  let used=0;
-  for(let s=hI-1;s>=0 && s>=hI-7 && used<3;s-=2){
-    const S=conf[s]; let ok=true, stop=false;
-    for(let k=s;k<=hI;k++){ const q=conf[k];
-      if(q.kind===O && (O==="high"? q.price>H.price : q.price<H.price)){ stop=true; break; }
-      if(q.kind===K && (K==="low"? q.price<S.price : q.price>S.price)) ok=false; }
-    if(stop) break; if(!ok) continue;
-    const dur=H.i-S.i; if(dur<mind) continue; used++;
-    for(const r of DTP_TR) proj.push({x:H.i+r*dur, src:`TR ${r.toFixed(3)} × ${lbl(S)}→${lbl(H)} (${dur}TB) from ${lbl(H)}`});
-  }
+  const H=conf[hI], tH=tcOf(H.i), u=dtpUnitLbl(), proj=[];
+  const lbl=(p)=>dtLabel(p.date), f3=(r)=>r.toFixed(3);
+  for(const S of conf.slice(0,hI).filter(p=>p.kind===K).slice(-1)){
+    const dur=tH-tcOf(S.i); if(dur<2) continue;
+    for(const r of DTP_TR) proj.push({x:tH+r*dur, w:1, src:`TR ${f3(r)} × ${lbl(S)}→${lbl(H)} (${dur}${u}) from ${lbl(H)}`}); }
   let c=0;
-  for(let j=hI-1;j>=1 && c<3;j--){ const A=conf[j-1], B=conf[j];
-    if(A.kind===O && B.kind===K){ const dur=B.i-A.i; if(dur>=mind){ c++;
-      for(const r of DTP_ATP) proj.push({x:H.i+r*dur, src:`ATP ${r.toFixed(3)} × ${lbl(A)}→${lbl(B)} (${dur}TB) from ${lbl(H)}`}); } } }
-  const ks=conf.slice(0,hI).filter(p=>p.kind===K);
-  if(ks.length>=2){ const Lp=ks[ks.length-1]; c=0;
-    for(let j=ks.length-1;j>=1 && c<3;j--){ const dur=ks[j].i-ks[j-1].i; if(dur>=mind){ c++;
-      for(const r of DTP_TT) proj.push({x:Lp.i+r*dur, src:`${K==="low"?"Trough-trough":"Crest-crest"} ${r.toFixed(3)} × ${lbl(ks[j-1])}→${lbl(ks[j])} (${dur}TB) from ${lbl(Lp)}`}); } } }
-  return {proj, from:H.i+1, anchor:H};
+  for(let j=hI;j>=1 && c<2;j--){ const A=conf[j-1], B=conf[j];
+    if(A.kind===O && B.kind===K){ const dur=tcOf(B.i)-tcOf(A.i); c++;
+      if(dur>=2) for(const r of DTP_ATP) proj.push({x:tH+r*dur, w:1, src:`ATP ${f3(r)} × ${lbl(A)}→${lbl(B)} (${dur}${u}) from ${lbl(H)}`}); } }
+  const os=conf.slice(0,hI+1).filter(p=>p.kind===O);
+  for(let j=os.length-1;j>=1 && j>=os.length-3;j--){ const dur=tcOf(os[j].i)-tcOf(os[j-1].i); if(dur<2) continue;
+    for(const r of DTP_CC) proj.push({x:tH+r*dur, w:DTP_CC_W, src:`${K==="low"?"Crest-crest":"Trough-trough"} ${f3(r)} × ${lbl(os[j-1])}→${lbl(os[j])} (${dur}${u}) from ${lbl(H)}`}); }
+  const st=Math.max(0, +$("dtpStart").value||0);
+  return {proj:proj.filter(p=>p.x-tH>=st), from:H.i+1, t0:tH, anchor:H};
+}
+// Display grid: one point per calendar day (daily, cal mode) or per bar slot.
+function dtpGrid(fromI){
+  const end=D.n+FUT, g=[];
+  if(!dtpCal()){ for(let i=fromI;i<end;i++){ const s=slotDate(i); if(s) g.push({xi:i,t:i,date:s,wk:false}); } return g; }
+  for(let i=Math.max(1,fromI);i<end;i++){ const s=slotDate(i), ps=slotDate(i-1); if(!s||!ps) continue;
+    const d1=dayNum(ps), d2=dayNum(s);
+    if(i>fromI) for(let d=d1+1; d<d2; d++){ g.push({xi:i-1+(d-d1)/(d2-d1), t:d, date:new Date(d*86400000).toISOString().slice(0,10), wk:true}); }
+    g.push({xi:i,t:d2,date:s,wk:false}); }
+  return g;
 }
 function computeTime(){
-  const empty={series:[],cnt:{},src:{},from:0,target:"low"};
+  const empty={series:[],target:"low"};
   const last=P.length-1; if(last<1) return empty;
-  const conf=P.filter(p=>!p.tent); const lp=P[last];
+  const conf=P.filter(p=>!p.tent && !DTP_EX.has(p.date)); const lp=P[last];
   const mode=$("dtpTarget").value;
   const target = mode==="auto" ? (lp.tent ? lp.kind : opp(lp.kind)) : mode;
   const kinds = target==="both" ? ["low","high"] : [target];
-  const sig=Math.max(0.3, +$("band").value||1.5), thr=Math.min(0.99,Math.max(0,(+$("dtpMin").value||0)/100));
-  const end=D.n+FUT; const cnt={}, src={}; const series=[]; let from=Infinity;
+  const bwid=Math.max(0.3, +$("band").value||1.5), thr=Math.min(0.99,Math.max(0,(+$("dtpMin").value||0)/100));
+  const series=[];
   for(const K of kinds){
-    const r=dtpFor(K, conf); if(!r) continue; from=Math.min(from,r.from);
-    const w={}; let maxW=0;
-    for(let j=r.from;j<end;j++){ let v=0; for(const p of r.proj){ const dx=j-p.x; if(Math.abs(dx)<4*sig) v+=Math.exp(-dx*dx/(2*sig*sig)); } if(v>0.01){ w[j]=v; maxW=Math.max(maxW,v); } }
-    const show={}; for(const [j,v] of Object.entries(w)){ if(v>=thr*maxW && maxW>0) show[j]= thr<0.99? (v-thr*maxW)/(maxW-thr*maxW)*0.85+0.15 : 1; }
-    for(const p of r.proj){ const j=Math.round(p.x); if(j<r.from) continue; cnt[j]=(cnt[j]||0)+1; }
-    for(const j of Object.keys(show)){ src[j]=(src[j]||[]).concat(r.proj.filter(p=>Math.abs(p.x-j)<=Math.max(1,sig)).map(p=>p.src)); }
-    series.push({kind:K, w, show, maxW, col: K==="low"?"#c030c0":"#1f8f8f", n:r.proj.length});
+    const r=dtpFor(K, conf); if(!r) continue;
+    const g=dtpGrid(r.from); let maxW=0;
+    for(const q of g){ let v=0, n=0; const src=[];
+      for(const p of r.proj){ const a=Math.abs(q.t-p.x); if(a<bwid){ v+=p.w*(1-a/bwid); src.push(p.src); } if(a<=0.5) n++; }
+      q.v=v; q.n=n; q.src=src; maxW=Math.max(maxW,v); }
+    const pts=g.filter(q=>q.v>0.01*maxW && q.v>=thr*maxW && maxW>0).map(q=>({...q, h:q.v/maxW}));
+    series.push({kind:K, pts, maxW, col: K==="low"?"#c030c0":"#1f8f8f", n:r.proj.length});
   }
-  return {series,cnt,src,from:isFinite(from)?from:0,target};
+  return {series,target};
 }
 
 function computeMA(){
-  return MA_DEF.map(m=>{ const a=new Array(D.n).fill(null); let s=0;
-    for(let i=0;i<D.n;i++){ s+=D.c[i]; if(i>=m.len) s-=D.c[i-m.len]; if(i>=m.len-1) a[i]=s/m.len; }
+  // EMA seeded with the SMA of the first len closes; alpha = 2/(len+1).
+  return MA_DEF.map(m=>{ const a=new Array(D.n).fill(null); const k=2/(m.len+1); let s=0, e=null;
+    for(let i=0;i<D.n;i++){ if(e===null){ s+=D.c[i]; if(i===m.len-1){ e=s/m.len; a[i]=e; } } else { e=D.c[i]*k+e*(1-k); a[i]=e; } }
     return {...m, v:a}; });
 }
 
@@ -410,8 +438,10 @@ function bw(){ return (L.x1-L.x0)/view.count; }
 function xOf(i){ return L.x0 + (i-(view.right-view.count+1))*bw() + bw()/2; }
 function iOfX(x){ return Math.round((x-L.x0-bw()/2)/bw() + view.right-view.count+1); }
 let Y={lo:0,hi:1};
-function yOf(p){ return L.top+8 + (Y.hi-p)/(Y.hi-Y.lo)*(L.mainB-L.top-16); }
-function pOfY(y){ return Y.hi - (y-L.top-8)/(L.mainB-L.top-16)*(Y.hi-Y.lo); }
+function legH(){ return $("showMA").checked?13:0; }
+function padT(){ return ($("showPiv").checked?50:8)+legH(); }
+function yOf(p){ const pt=padT(); return L.top+pt + (Y.hi-p)/(Y.hi-Y.lo)*(L.mainB-L.top-2*pt); }
+function pOfY(y){ const pt=padT(); return Y.hi - (y-L.top-pt)/(L.mainB-L.top-2*pt)*(Y.hi-Y.lo); }
 
 function computeY(levels){
   const a=Math.max(0,Math.floor(view.right-view.count+1)), b=Math.min(D.n-1,Math.ceil(view.right));
@@ -494,9 +524,9 @@ function draw(){
   drawDaySeparators(iA,iB);
   // MAs
   if($("showMA").checked){
-    for(const m of MA){ ctx.strokeStyle=m.col; ctx.lineWidth=1; ctx.beginPath(); let st=false;
+    for(const m of MA){ ctx.strokeStyle=m.col; ctx.lineWidth=m.dash.length?1.3:1; ctx.setLineDash(m.dash); ctx.beginPath(); let st=false;
       for(let i=Math.max(0,iA-1);i<=Math.min(D.n-1,iB+1);i++){ const v=m.v[i]; if(v==null){st=false;continue;} const x=xOf(i), y=yOf(v); if(!st){ctx.moveTo(x,y);st=true;} else ctx.lineTo(x,y); }
-      ctx.stroke(); }
+      ctx.stroke(); ctx.setLineDash([]); }
   }
 
   // levels
@@ -532,23 +562,27 @@ function draw(){
   }
 
   // pivot labels
-  const rects=[];
+  const rects=[]; PIVR=[];
   if($("showPiv").checked){
     ctx.font="10.5px Tahoma, Arial"; ctx.textAlign="center";
+    const rowEnd={high:[],low:[]};
     for(const p of P){ if(p.i<iA-2||p.i>iB+2) continue;
-      const x=Math.max(36,Math.min(L.x1-36,xOf(p.i))); const lines=[dtLabel(p.date), p.chg==null?fmt(p.price):`${fmt(p.price)}, ${fmt(p.chg, decs(p.price))}`, p.tb==null?"":`${p.tb}TB`];
-      ctx.fillStyle=p.tent?"#888":"#000";
+      const x=Math.max(36,Math.min(L.x1-36,xOf(p.i))); const lines=[dtLabel(p.date), p.chg==null?fmt(p.price):`${fmt(p.price)}, ${fmt(p.chg, decs(p.price))}`, p.tb==null?"":(D.tf==="1wk"?`${p.tb} Wk`:`${p.tb}TB`)];
+      const ex=DTP_EX.has(p.date); ctx.fillStyle=ex?"#b0b0b0":(p.tent?"#888":"#000");
       const lw=Math.max(...lines.map(t=>ctx.measureText(t).width))+4, yP=yOf(p.price);
       rects.push(p.kind==="high"? {x0:x-lw/2,x1:x+lw/2,y0:Math.max(L.top,yP-52),y1:yP} : {x0:x-lw/2,x1:x+lw/2,y0:yP,y1:Math.min(L.mainB,yP+52)});
-      if(p.kind==="high"){
-        let y=yOf(p.price)-4; ctx.textBaseline="bottom";
-        ctx.fillText("↓",x,y); y-=12;
-        for(let k=lines.length-1;k>=0;k--){ if(!lines[k]) continue; ctx.fillText(lines[k],x,Math.max(L.top+12+ (k)*11, y)); y-=11; }
-      } else {
-        let y=yOf(p.price)+4; ctx.textBaseline="top";
-        ctx.fillText("↑",x,y); y+=12;
-        const ord=[lines[2],lines[1],lines[0]];
-        for(let k=0;k<ord.length;k++){ if(!ord[k]) continue; ctx.fillText(ord[k],x,Math.min(L.mainB-12-(ord.length-1-k)*11-2, y)); y+=11; }
+      // stagger into a second/third row when labels would overlap
+      const re=rowEnd[p.kind]; let row=0; while(row<re.length && re[row]>x-lw/2-3) row++; re[row]=x+lw/2; const rowOff=row*46;
+      if(p.kind==="high"){ // DT style: highs in a row along the top edge
+        ctx.textBaseline="top"; let y=L.top+3+legH()+rowOff;
+        for(const t of lines){ if(t){ ctx.fillText(t,x,y); y+=11; } } ctx.fillText("↓",x,y);
+        rects[rects.length-1]={x0:x-lw/2,x1:x+lw/2,y0:L.top+legH()+rowOff,y1:y+12}; PIVR.push({...rects[rects.length-1],p});
+        if(ex){ ctx.strokeStyle="#b0b0b0"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x-lw/2,L.top+legH()+8+rowOff); ctx.lineTo(x+lw/2,L.top+legH()+8+rowOff); ctx.stroke(); }
+      } else {            // lows in a row along the bottom edge
+        ctx.textBaseline="bottom"; let y=L.mainB-3-rowOff;
+        for(const t of [lines[0],lines[1],lines[2]]){ if(t){ ctx.fillText(t,x,y); y-=11; } } ctx.fillText("↑",x,y);
+        rects[rects.length-1]={x0:x-lw/2,x1:x+lw/2,y0:y-12,y1:L.mainB-rowOff}; PIVR.push({...rects[rects.length-1],p});
+        if(ex){ ctx.strokeStyle="#b0b0b0"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x-lw/2,L.mainB-9-rowOff); ctx.lineTo(x+lw/2,L.mainB-9-rowOff); ctx.stroke(); }
       }
     }
   }
@@ -558,9 +592,9 @@ function draw(){
         for(const z of [...ZN].sort((a,b)=>b.n-a.n)){
       ctx.font = z.n>=3?"bold 14px Tahoma, Arial":"bold 12px Tahoma, Arial";
       const txt=z.label + (z.n>=3?`  (${z.n})`:""); const tw=ctx.measureText(txt).width;
-      let x=Math.max(4,xOf(z.start)+B*1.5); let y=yOf(z.hi)-3;
+      let x=Math.max(4,xOf(z.start)+B*1.5); let y=yOf(z.lo)+16;
       const hitR=(x,y)=>rects.some(r=>x<r.x1&&x+tw>r.x0&&y-14<r.y1&&y>r.y0);
-      let tries=0; while(hitR(x,y) && tries<30){ x+=Math.max(B,20); tries++; if(x+tw>L.x1-150){ x=Math.max(4,xOf(z.start)+B*1.5); y-=15; } }
+      let tries=0; while(hitR(x,y) && tries<30){ x+=Math.max(B,20); tries++; if(x+tw>L.x1-150){ x=Math.max(4,xOf(z.start)+B*1.5); y+=15; } }
       rects.push({x0:x,x1:x+tw,y0:y-14,y1:y});
       ctx.fillStyle="#000"; ctx.fillText(txt, x, y);
     }
@@ -590,26 +624,31 @@ function draw(){
   const ph=L.dtpB-L.dtpT-16; const wbar=Math.max(2,Math.min(B*0.3,6));
   ctx.save(); ctx.beginPath(); ctx.rect(1,L.dtpT+1,L.x1-2,L.dtpB-L.dtpT-2); ctx.clip();
   TP.series.forEach((se,k)=>{ const off = TP.series.length>1 ? (k?1:-1)*wbar*0.6 : 0;
-    for(const [js,v] of Object.entries(se.show)){ const i=+js; if(i<iA-1||i>iB+1) continue; const x=xOf(i)+off; const h=v*ph;
-      ctx.fillStyle= i<D.n ? (se.kind==="low"?"rgba(192,48,192,0.55)":"rgba(31,143,143,0.55)") : se.col; ctx.fillRect(x-wbar/2, L.dtpB-2-h, wbar, h);
-      const c=TP.cnt[i]; if(B>=14 && c>=2 && v>0.6){ ctx.fillStyle="#555"; ctx.font="9px Tahoma, Arial"; ctx.textAlign="center"; ctx.textBaseline="bottom"; ctx.fillText(c, x, L.dtpB-3-h); } } });
+    for(const q of se.pts){ if(q.xi<iA-1||q.xi>iB+1) continue; const x=xOf(q.xi)+off; const h=q.h*ph; const ww=q.wk? Math.max(1.5,Math.min(wbar*0.6,B*0.25)) : wbar;
+      ctx.fillStyle= q.xi<D.n-1 ? (se.kind==="low"?"rgba(192,48,192,0.55)":"rgba(31,143,143,0.55)") : se.col; ctx.fillRect(x-ww/2, L.dtpB-2-h, ww, h);
+      if(B>=14 && q.n>=2 && q.h>0.6 && !q.wk){ ctx.fillStyle="#555"; ctx.font="9px Tahoma, Arial"; ctx.textAlign="center"; ctx.textBaseline="bottom"; ctx.fillText(q.n, x, L.dtpB-3-h); } } });
   ctx.restore();
 
   // header info box (bar under cursor or last)
   const hi = hover && hover.i>=0 && hover.i<D.n ? hover.i : D.n-1;
   const d=parseD(D.dates[hi]); const ch = hi>0? D.c[hi]-D.c[hi-1] : 0;
-  const info=`${WD[d.getUTCDay()]} ${d.getUTCDate()}-${MON[d.getUTCMonth()]}-${d.getUTCFullYear()}${D.intraday?" "+hhmm(d):""}`;
+  const dd = D.tf==="1wk" ? new Date(d.getTime()+4*86400000) : d;
+  const info=`${D.tf==="1wk"?"Wk ending ":""}${WD[dd.getUTCDay()]} ${dtLabel(D.dates[hi])}`;
   const nums=`  ${fmt(D.o[hi])}  ${fmt(D.h[hi])}  ${fmt(D.l[hi])}  ${fmt(D.c[hi])}  ${ch>=0?"+":""}${fmt(ch)}`;
   ctx.font="11px Tahoma, Arial"; ctx.textBaseline="middle"; ctx.textAlign="left";
   const w1=ctx.measureText(info).width, w2=ctx.measureText(nums).width;
   ctx.fillStyle="#fffde8"; ctx.fillRect(4,6,w1+w2+10,16); ctx.strokeStyle="#999"; ctx.strokeRect(4.5,6.5,w1+w2+9,15);
   ctx.fillStyle="#c05a00"; ctx.fillText(info,9,14); ctx.fillStyle="#000"; ctx.fillText(nums,9+w1,14);
-  if($("showMA").checked){ ctx.font="10px Tahoma, Arial"; let y=L.top+10;
-    MA.forEach((m,k)=>{ const v=m.v[hi]; ctx.fillStyle=m.col; ctx.fillText(`MA${k+1} (${m.len}) = ${v==null?"—":fmt(v)}`, 6, y); y+=11; }); }
+  // EMA legend (MA1..MA4 = EMA 5/8/13/21): one header line, right of the title, so the top pivot row stays clear
+  if($("showMA").checked){ ctx.font="bold 17px Tahoma, Arial"; ctx.textAlign="left"; const tW=ctx.measureText(`${sym}-${TFS[D.tf].suf}`).width;
+    ctx.font="10px Tahoma, Arial"; ctx.textBaseline="middle"; const items=MA.map((m,k)=>{ const v=m.v[hi]; return {m,t:`MA${k+1} EMA${m.len} ${v==null?"—":fmt(v)}`}; });
+    const tot=items.reduce((a,q)=>a+ctx.measureText(q.t).width+26,0); let x=L.x1/2+tW/2+16, yl=14;
+    x=4; yl=L.top+7; // own strip under the header (pivot row starts below it)
+    for(const {m,t} of items){ ctx.fillStyle=m.col; ctx.strokeStyle=m.col; ctx.lineWidth=1.3; ctx.setLineDash(m.dash); ctx.beginPath(); ctx.moveTo(x,yl); ctx.lineTo(x+14,yl); ctx.stroke(); ctx.setLineDash([]); ctx.fillText(t, x+17, yl); x+=ctx.measureText(t).width+26; } }
 
   // footer
   ctx.fillStyle="#444"; ctx.font="10px Tahoma, Arial"; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText(`Chart created by Fib Time & Price · ${TFS[D.tf].name} bars · time counted in ${TFS[D.tf].name} bars${D.intraday?(D.session==="rth"?" (RTH 9:30–16:00 ET)":D.session==="fut"?" (Globex ~23h, approx.)":" (24×7)"):""} · data: Yahoo Finance`, L.x1/2, H-8);
+  ctx.fillText(`Chart created by Fib Time & Price · ${TFS[D.tf].name} bars · time counted in ${dtpCal()?"calendar days (DTP)":TFS[D.tf].name+" bars"}${D.intraday?(D.session==="rth"?" (RTH 9:30–16:00 ET)":D.session==="fut"?" (Globex ~23h, approx.)":" (24×7)"):""} · data: Yahoo Finance`, L.x1/2, H-8);
 
   // hover vertical line across panes
   if(hover && hover.x<L.x1){ const x=Math.round(xOf(hover.i))+0.5; ctx.strokeStyle="#888"; ctx.lineWidth=0.7; ctx.setLineDash([2,2]); ctx.beginPath(); ctx.moveTo(x,L.top); ctx.lineTo(x,L.dtpB); ctx.stroke(); ctx.setLineDash([]);
@@ -668,11 +707,12 @@ function drawDaySeparators(iA,iB){
 function fillTables(){
   const v=visibleLevels();
   $("tblZones").innerHTML = "<tr><th>Zone</th><th>#</th><th class=l>Levels</th></tr>" + [...ZN].sort((a,b)=>b.lo-a.lo).map(z=>`<tr><td><b>${z.label}</b></td><td>${z.n}</td><td class=l>${z.levels.map(lvText).join("; ")}</td></tr>`).join("");
-  const rows=[]; for(const se of TP.series){ const ks=Object.keys(se.show).map(Number).sort((x,y)=>x-y);
-    for(const i of ks){ const v=se.w[i], pv=se.w[i-1]||0, nx=se.w[i+1]||0; if(v>=pv && v>=nx) rows.push([i,se.kind,v/se.maxW]); } }
-  rows.sort((a,b)=>b[2]-a[2]);
-  $("tblTime").innerHTML = "<tr><th class=l>Date</th><th class=l>Turn</th><th>Strength</th><th class=l>Projections (±band)</th></tr>" + rows.slice(0,10).map(([i,k,v])=>`<tr><td class=l>${slotDate(i)?dtLabel(slotDate(i)):"bar "+i}</td><td class=l>${k}</td><td>${Math.round(v*100)}%</td><td class=l>${(TP.src[i]||[]).join("<br>")}</td></tr>`).join("");
-  $("tblPiv").innerHTML = "<tr><th class=l>Date</th><th class=l>Kind</th><th>Price</th><th>Chg</th><th>TB</th></tr>" + P.slice(-14).reverse().map(p=>`<tr><td class=l>${dtLabel(p.date)}${p.tent?" (tent.)":""}</td><td class=l>${p.kind}</td><td>${fmt(p.price)}</td><td>${p.chg==null?"":fmt(p.chg)}</td><td>${p.tb??""}</td></tr>`).join("");
+  const rows=[]; for(const se of TP.series){ const a=se.pts;
+    a.forEach((q,j)=>{ const pv=a[j-1]&&a[j-1].t===q.t-1?a[j-1].v:0, nx=a[j+1]&&a[j+1].t===q.t+1?a[j+1].v:0; if(q.v>=pv && q.v>=nx) rows.push([q,se.kind]); }); }
+  rows.sort((a,b)=>b[0].h-a[0].h);
+  const exN=P.filter(p=>DTP_EX.has(p.date)).length;
+  $("tblTime").innerHTML = `<tr><th class=l>Date</th><th class=l>Turn</th><th>Strength</th><th class=l>Projections (±band)${exN?` · ${exN} pivot(s) excluded`:""}</th></tr>` + rows.slice(0,10).map(([q,k])=>`<tr><td class=l>${dtpDateLbl(q)}</td><td class=l>${k}</td><td>${Math.round(q.h*100)}%</td><td class=l>${q.src.join("<br>")}</td></tr>`).join("");
+  $("tblPiv").innerHTML = `<tr><th class=l>Date</th><th class=l>Kind</th><th>Price</th><th>Chg</th><th>${D.tf==="1wk"?"Wk":"TB"}</th><th class=l title="Click a pivot label on the chart to include/exclude it from the DTP">DTP</th></tr>` + P.slice(-14).reverse().map(p=>`<tr><td class=l>${dtLabel(p.date)}${p.tent?" (tent.)":""}</td><td class=l>${p.kind}</td><td>${fmt(p.price)}</td><td>${p.chg==null?"":fmt(p.chg)}</td><td>${p.tb??""}</td><td class=l>${p.tent?"–":(DTP_EX.has(p.date)?"excluded":"used")}</td></tr>`).join("");
   $("tblLv").innerHTML = "<tr><th>Price</th><th class=l>Type</th><th class=l>Swing</th></tr>" + [...v].sort((a,b)=>b.price-a.price).map(x=>`<tr><td style="color:${lvColor(x)}">${fmt(x.price)}</td><td class=l>${x.type==="EX"?"EX Ret":x.type} ${x.r.toFixed(3)}${x.hit?" (hit)":""}</td><td class=l>${x.desc}</td></tr>`).join("");
 }
 
@@ -701,7 +741,7 @@ async function load(){
     const ov=(q.get("ohlc")||"").split(",").map(Number); if(D.n && ov.length===4 && ov.every(isFinite)){ const k=D.n-1; [D.o[k],D.h[k],D.l[k],D.c[k]]=ov; }
     if(!D.n){ setStatus("No bars returned", true); D=null; draw(); return; }
     D.tf = TFS[j.tf] ? j.tf : tf; D.intraday = !!j.intraday || TFS[D.tf].mins>0; D.mins=TFS[D.tf].mins; D.session=j.session||"rth";
-    FUT = TFS[D.tf].fut;
+    FUT = TFS[D.tf].fut; loadEx();
     D.future=genFuture(D.dates[D.n-1]);
     layout(); resetView(); recompute();
     setStatus(`${j.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`);
@@ -709,9 +749,10 @@ async function load(){
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
 
-const KEYS=["ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","dtpTarget","target"];
-function save(){ const o={}; for(const k of KEYS){ const el=$(k); o[k]= el.type==="checkbox"? el.checked : el.value; } try{ localStorage.setItem("ftp2",JSON.stringify(o)); }catch(_){} }
+const KEYS=["ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
+function save(){ const o={v:3}; for(const k of KEYS){ const el=$(k); o[k]= el.type==="checkbox"? el.checked : el.value; } try{ localStorage.setItem("ftp2",JSON.stringify(o)); }catch(_){} }
 function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{}"); }catch(_){}
+  if(o.v!==3){ delete o.dtpMin; delete o.band; delete o.maxLv; } // DTP defaults changed (fitted model)
   const q=new URL(location.href).searchParams;
   let tf=q.get("tf")||o.tf||"1d"; if(!TFS[tf]) tf="1d"; $("tf").value=tf;
   fillPeriods(tf, (o.tf===tf)? o.period : null);
@@ -732,7 +773,7 @@ cv.addEventListener("wheel",(e)=>{ e.preventDefault(); const r=cv.getBoundingCli
   zoomAt(e.deltaY>0?1.12:1/1.12, x); },{passive:false});
 const ptrs=new Map(); let drag=null, pinch=null;
 cv.addEventListener("pointerdown",(e)=>{ cv.setPointerCapture(e.pointerId); const r=cv.getBoundingClientRect(); ptrs.set(e.pointerId,{x:e.clientX-r.left,y:e.clientY-r.top});
-  if(ptrs.size===1){ const p=[...ptrs.values()][0]; drag={x:p.x,y:p.y,right:view.right,yShift:view.yShift,yZoom:view.yZoom,axis:p.x>L.x1}; }
+  if(ptrs.size===1){ const p=[...ptrs.values()][0]; clickAt={x:p.x,y:p.y,t:Date.now()}; drag={x:p.x,y:p.y,right:view.right,yShift:view.yShift,yZoom:view.yZoom,axis:p.x>L.x1}; }
   else if(ptrs.size===2){ const [a,b]=[...ptrs.values()]; pinch={d:Math.abs(a.x-b.x)||1,count:view.count,cx:(a.x+b.x)/2}; drag=null; } });
 cv.addEventListener("pointermove",(e)=>{ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top;
   if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId,{x,y});
@@ -741,16 +782,24 @@ cv.addEventListener("pointermove",(e)=>{ const r=cv.getBoundingClientRect(); con
     if(drag.axis){ view.yZoom=Math.max(0.2,drag.yZoom*Math.exp((drag.y-y)/150)); }
     else { view.right = drag.right - (x-drag.x)/bw(); const dy=y-drag.y; view.yShift = drag.yShift + dy/(L.mainB-L.top)*(Y.hi-Y.lo); clampView(); }
     hover=null; draw(); return; }
-  if(!D) return; hover={x,y,i:iOfX(x)}; draw(); showTip(x,y);
+  if(!D) return; cv.style.cursor = PIVR.some(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1) ? "pointer" : ""; hover={x,y,i:iOfX(x)}; draw(); showTip(x,y);
 });
-function endPtr(e){ ptrs.delete(e.pointerId); if(ptrs.size<2) pinch=null; if(ptrs.size===0) drag=null; }
+let clickAt=null;
+function endPtr(e){
+  if(e.type==="pointerup" && clickAt && ptrs.size===1 && D){ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top;
+    if(Math.hypot(x-clickAt.x,y-clickAt.y)<5 && Date.now()-clickAt.t<600){ const h=PIVR.find(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
+      if(h){ const k=h.p.date; if(DTP_EX.has(k)) DTP_EX.delete(k); else DTP_EX.add(k); saveEx(); recompute(); } } }
+  clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch=null; if(ptrs.size===0) drag=null; }
 cv.addEventListener("pointerup",endPtr); cv.addEventListener("pointercancel",endPtr);
 cv.addEventListener("pointerleave",()=>{ hover=null; $("tip").style.display="none"; draw(); });
 cv.addEventListener("dblclick",()=>{ resetView(); draw(); });
 function showTip(x,y){
   const tip=$("tip"); if(!D||y<L.dtpT||y>L.dtpB||x>L.x1){ tip.style.display="none"; return; }
-  const i=iOfX(x); const src=TP.src[i]; if(!src){ tip.style.display="none"; return; }
-  tip.textContent=`${dtLabel(slotDate(i))} · ${src.length} projection${src.length>1?"s":""}\n`+src.join("\n");
+  let best=null, bd=Math.max(4,bw()*0.4);
+  for(const se of TP.series) for(const q of se.pts){ const d=Math.abs(xOf(q.xi)-x); if(d<bd || (best && d===bd && q.h>best.h)){ bd=d; best=q; } }
+  if(!best || !best.src.length){ tip.style.display="none"; return; }
+  const src=best.src;
+  tip.textContent=`${dtpDateLbl(best)} · ${Math.round(best.h*100)}% · ${src.length} projection${src.length>1?"s":""}\n`+src.join("\n");
   tip.style.display="block"; const tw=tip.offsetWidth, th=tip.offsetHeight; tip.style.left=Math.min(x+12, L.W-tw-4)+"px"; tip.style.top=Math.max(4,y-th-8)+"px";
 }
 window.addEventListener("keydown",(e)=>{ if(!D||e.target.tagName==="INPUT") return; if(e.key==="ArrowLeft"){view.right-=Math.max(1,view.count*0.1);clampView();draw();} if(e.key==="ArrowRight"){view.right+=Math.max(1,view.count*0.1);clampView();draw();} if(e.key==="+"||e.key==="=")zoomAt(1/1.25); if(e.key==="-")zoomAt(1.25); });
@@ -760,7 +809,7 @@ $("ticker").addEventListener("keydown",(e)=>{ if(e.key==="Enter") load(); });
 $("period").onchange=load;
 const TOL_DEF={"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05};
 $("tf").onchange=()=>{ const tf=$("tf").value; fillPeriods(tf, null); $("tol").value=TOL_DEF[tf]??0.25; load(); };
-for(const k of ["swing","depth","maxLv","tol","band","dtpMin","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
+for(const k of ["swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
 $("zoomIn").onclick=()=>zoomAt(1/1.25); $("zoomOut").onclick=()=>zoomAt(1.25); $("zoomReset").onclick=()=>{resetView();draw();};
 window.addEventListener("resize",()=>{ sizeWrap(); draw(); });
 

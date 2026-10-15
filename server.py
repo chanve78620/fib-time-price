@@ -153,7 +153,8 @@ def _fetch_daily_uncached(ticker: str, period: str, tf: str = "1d"):
         return None, "Invalid ticker symbol"
     cfg = TIMEFRAMES[tf]
     try:
-        df = yf.Ticker(t).history(period=period, interval=cfg["interval"], auto_adjust=True)
+        # Raw (dividend-unadjusted) OHLC like Dynamic Trader; Yahoo still split-adjusts.
+        df = yf.Ticker(t).history(period=period, interval=cfg["interval"], auto_adjust=False)
     except Exception as e:  # noqa: BLE001
         return None, f"Failed to fetch data: {e}"
     if df is None or df.empty:
