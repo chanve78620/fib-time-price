@@ -25,6 +25,8 @@ MAX_PIVOTS = 40
 
 
 def _iso(d) -> str:
+    if hasattr(d, "hour") and (d.hour or d.minute):
+        return d.strftime("%Y-%m-%dT%H:%M")
     if hasattr(d, "date"):
         d = d.date()
     return d.isoformat()
@@ -76,22 +78,67 @@ def _normalize_ticker(raw: str) -> str:
     return t
 
 
+# Timeframes: UI key -> (yfinance interval,
+# default period, allowed periods). Yahoo limits: 15m/30m ~60 days of
+# history, 60m ~730 days.
+TIMEFRAMES: dict[str, dict[str, Any]] = {
+    "1wk": {"interval": "1wk", "default": "10y",
+            "periods": ["1y", "2y", "5y", "10y", "max"]},
+    "1d": {"interval": "1d", "default": "2y",
+           "periods": ["6mo", "1y", "2y", "5y", "10y"]},
+    "60m": {"interval": "60m", "default": "3mo",
+            "periods": ["1mo", "3mo", "6mo", "1y", "730d"]},
+    "30m": {"interval": "30m", "default": "1mo",
+            "periods": ["5d", "1mo", "60d"]},
+    "15m": {"interval": "15m", "default": "1mo",
+            "periods": ["5d", "1mo", "60d"]},
+}
+TF_ALIASES = {"w": "1wk", "wk": "1wk", "weekly": "1wk", "d": "1d", "daily": "1d",
+              "60": "60m", "1h": "60m", "30": "30m", "15": "15m"}
+
+
+def _norm_tf(raw: str | None) -> str:
+    t = (raw or "1d").strip().lower()
+    t = TF_ALIASES.get(t, t)
+    return t if t in TIMEFRAMES else "1d"
+
+
+def _session_kind(sym: str) -> str:
+    """rth = US cash session 9:30-16:00 ET; fut = CME ~23h; 24x7 = crypto."""
+    if sym.endswith("-USD") or sym.endswith("-USDT"):
+        return "24x7"
+    if sym.endswith("=F") or sym.endswith("=X"):
+        return "fut"
+    return "rth"
+
+
+def _clamp_period(tf: str, period: str | None) -> str:
+    cfg = TIMEFRAMES[tf]
+    p = (period or "").strip()
+    if p in cfg["periods"]:
+        return p
+    if tf in ("1d", "1wk") and p in ("1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y", "10y", "max"):
+        return p
+    return cfg["default"]
+
+
 # Simple in-memory cache of yfinance results: avoids hammering Yahoo (which
 # rate-limits datacenter IPs) when the UI calls /api/pivots and /api/history.
 CACHE_TTL = int(os.environ.get("CACHE_TTL", "600"))  # seconds
 CACHE_MAX = 200
-_cache: dict[tuple[str, str], tuple[float, Any]] = {}
+_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
 _cache_lock = threading.Lock()
 
 
-def _fetch_daily(ticker: str, period: str):
-    key = (_normalize_ticker(ticker), period)
+def _fetch_daily(ticker: str, period: str, tf: str = "1d"):
+    key = (_normalize_ticker(ticker), period, tf)
     now = time.time()
+    ttl = CACHE_TTL if tf in ("1d", "1wk") else min(CACHE_TTL, 120)
     with _cache_lock:
         hit = _cache.get(key)
-        if hit and now - hit[0] < CACHE_TTL:
+        if hit and now - hit[0] < ttl:
             return hit[1]
-    out = _fetch_daily_uncached(ticker, period)
+    out = _fetch_daily_uncached(ticker, period, tf)
     if out[1] is None:  # only cache successes
         with _cache_lock:
             if len(_cache) >= CACHE_MAX:
@@ -100,12 +147,13 @@ def _fetch_daily(ticker: str, period: str):
     return out
 
 
-def _fetch_daily_uncached(ticker: str, period: str):
+def _fetch_daily_uncached(ticker: str, period: str, tf: str = "1d"):
     t = _normalize_ticker(ticker)
     if not t or len(t) > 24 or not all(c.isalnum() or c in ".-^=" for c in t):
         return None, "Invalid ticker symbol"
+    cfg = TIMEFRAMES[tf]
     try:
-        df = yf.Ticker(t).history(period=period, interval="1d", auto_adjust=True)
+        df = yf.Ticker(t).history(period=period, interval=cfg["interval"], auto_adjust=True)
     except Exception as e:  # noqa: BLE001
         return None, f"Failed to fetch data: {e}"
     if df is None or df.empty:
@@ -117,8 +165,17 @@ def _fetch_daily_uncached(ticker: str, period: str):
     df = df.reset_index()
     # Column may be Date or Datetime
     date_col = "Date" if "Date" in df.columns else df.columns[0]
-    ts = pd.to_datetime(df[date_col], utc=True)
-    df["_dt"] = ts.dt.tz_convert(None).dt.normalize()
+    ts = pd.to_datetime(df[date_col])
+    if cfg["interval"] in ("1d", "1wk"):
+        local = ts.dt.tz_localize(None) if ts.dt.tz is not None else ts
+        df["_dt"] = local.dt.normalize()
+    else:
+        # keep exchange-local wall-clock time, drop tz (naive local)
+        df["_dt"] = ts.dt.tz_localize(None) if ts.dt.tz is not None else ts
+        if "Open" not in df.columns:
+            df["Open"] = df["Close"]
+        df = df.dropna(subset=["High", "Low", "Close"])
+    df = df.reset_index(drop=True)
     return (t, df), None
 
 
@@ -244,8 +301,11 @@ def suggest_swing(pivots: list[dict[str, Any]]) -> dict[str, Any] | None:
     }
 
 
-def _history_payload(sym: str, df, period: str) -> dict[str, Any]:
-    dates = [_iso(d) for d in df["_dt"].tolist()]
+def _history_payload(sym: str, df, period: str, intraday: bool = False) -> dict[str, Any]:
+    if intraday:
+        dates = [d.strftime("%Y-%m-%dT%H:%M") for d in df["_dt"].tolist()]
+    else:
+        dates = [_iso(d) for d in df["_dt"].tolist()]
     closes = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["Close"]]
     highs = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["High"]]
     lows = [round(float(x), 4) if not math.isnan(float(x)) else None for x in df["Low"]]
@@ -288,7 +348,9 @@ def api_pivots():
     if not ticker:
         return jsonify({"error": "Missing ticker parameter"}), 400
 
-    result, err = _fetch_daily(ticker, period)
+    tf = _norm_tf(request.args.get("tf") or request.args.get("interval"))
+    period = _clamp_period(tf, period)
+    result, err = _fetch_daily(ticker, period, tf)
     if err:
         # Unknown / empty → 404; malformed → 400 already handled somewhat
         status = 400 if "Invalid" in err else 404
@@ -317,6 +379,7 @@ def api_pivots():
             "ticker": sym,
             "period": period,
             "lookback": lookback,
+            "tf": tf,
             "pivots": public,
             "suggested": suggested,
         }
@@ -332,7 +395,9 @@ def api_history():
     if not ticker:
         return jsonify({"error": "Missing ticker parameter"}), 400
 
-    result, err = _fetch_daily(ticker, period)
+    tf = _norm_tf(request.args.get("tf") or request.args.get("interval"))
+    period = _clamp_period(tf, period)
+    result, err = _fetch_daily(ticker, period, tf)
     if err:
         status = 400 if "Invalid" in err else 404
         return jsonify(
@@ -347,7 +412,17 @@ def api_history():
         ), status
 
     sym, df = result
-    return jsonify(_history_payload(sym, df, period))
+    out = _history_payload(sym, df, period, TIMEFRAMES[tf]["interval"] not in ("1d", "1wk"))
+    out["tf"] = tf
+    out["session"] = _session_kind(sym)
+    out["intraday"] = TIMEFRAMES[tf]["interval"] not in ("1d", "1wk")
+    out["tz"] = "UTC" if out["session"] == "24x7" and out["intraday"] else "America/New_York"
+    return jsonify(out)
+
+
+@app.get("/api/timeframes")
+def api_timeframes():
+    return jsonify({k: {"default": v["default"], "periods": v["periods"]} for k, v in TIMEFRAMES.items()})
 
 
 @app.get("/healthz")
