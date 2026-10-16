@@ -11,3 +11,7 @@ services:
         value: 3.12.7
       - key: CACHE_TTL
         value: "600"
+      # Financial Modeling Prep API key (primary data source). Paste the value
+      # in Render > fib-time-price > Environment; never commit it.
+      - key: FMP_API_KEY
+        sync: false
