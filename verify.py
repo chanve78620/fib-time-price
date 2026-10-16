@@ -101,8 +101,8 @@ if __name__ == "__main__" and "--levels" not in sys.argv:
 # if PLAYWRIGHT_CHROME is set, else playwright's bundled Chromium).
 # Rule: a drawn level is invalid if any bar after its anchor pivot (the bar
 # where the level becomes defined, tentative or not) has low <= level <= high,
-# unless it is marked "held" at the most recent pivot (then: no close beyond it
-# after that pivot bar).
+# except a "held" level exactly touched by the latest pivot's extreme (then:
+# no bar since its anchor may trade through it).
 def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) -> int:
     import json
     import os
@@ -139,13 +139,11 @@ def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) ->
             for lv in info["levels"]:
                 a = idx[lv["anchor"]]
                 if lv["held"]:
-                    # held at the latest pivot: allowed to be traded through by the
-                    # leg into that pivot, but no close beyond it after the pivot bar
-                    q = idx[lv["heldAt"]]
+                    # held marker: never traded THROUGH since its anchor (a wick exactly at it is ok)
                     is_low = lv["kind"] == "low"
-                    for j in range(q + 1, len(dates)):
-                        if (closes[j] < lv["price"]) if is_low else (closes[j] > lv["price"]):
-                            bad.append(f"{lv['txt']} held at {lv['heldAt']} but closed beyond {dates[j]}")
+                    for j in range(a + 1, len(dates)):
+                        if hi[j] is not None and ((lo[j] < lv["price"]) if is_low else (hi[j] > lv["price"])):
+                            bad.append(f"{lv['txt']} held at {lv['heldAt']} but traded through {dates[j]} [{lo[j]}-{hi[j]}]")
                             break
                     continue
                 start = a + 1
