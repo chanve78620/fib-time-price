@@ -117,7 +117,7 @@
       <span style="color:#2632b8">Ret</span> = retracement of a swing (0.382, 0.5, 0.618, 0.786);
       <span style="color:#0a7a1f">EX Ret</span> = external retracement past the swing start (1.272, 1.618, 2.618);
       <span style="color:#d01010">App</span> = alternate price projection, swing A→B length projected from C (0.618, 1.000, 1.618).
-      Only levels not yet traded through since their anchor pivot are drawn (tick <i>Hit lvls</i> to show all). Lines start at the anchor pivot bar. Two or more levels inside <i>Zone %</i> of price form a bold zone label (e.g. 7703-16).</p>
+      Only levels not yet traded through since their anchor pivot are drawn (tick <i>Hit lvls</i> to show all). Exception: levels the most recent pivot tested and <b>held</b> (between the pivot bar’s extreme and its close, ± ¼ of the average bar range, with no close beyond them before the leg into the pivot or after it) stay drawn, bolder, labelled “held” with a dot on the pivot bar. Lines start at the anchor pivot bar. Two or more levels inside <i>Zone %</i> of price form a bold zone label (e.g. 7703-16).</p>
     <p><b>DTP time pane:</b> counts time projections landing on each bar, counted in <b>bars of the selected timeframe</b> (future slots skip weekends and main NYSE holidays; intraday US stocks/indexes use the 9:30–16:00 ET session, futures ≈ Sun 18:00–Fri 17:00 ET with the daily 17:00–18:00 break, crypto 24×7; half-days are not modeled): time retracements/extensions of prior swings (0.382–2.618), alternate time projections (A→B duration from C: 0.618, 1, 1.618) and same-kind cycles (low→low, high→high: 0.618–1.618). Bar height = number of projections coinciding. <i>Auto</i> targets the pivot the current swing is heading for.</p>
     <p><b>Mouse:</b> wheel = zoom, drag = pan, Shift+wheel or drag on the price axis = vertical scale, double-click = reset. Touch: drag to pan, pinch to zoom.</p>
     <p>Ticker shortcuts: SPX → ^GSPC, NDX, DJI, RUT, VIX, ES/NQ/YM/RTY/CL/GC/SI → futures, BTC/ETH. Data: Financial Modeling Prep (Yahoo Finance fallback) — weekly, daily, 60m, 30m, 15m.</p>
@@ -240,10 +240,10 @@ function detectPivots(N){
     let last={...out[out.length-1]}; let cand=null; let extended=false;
     for(let k=last.i+1;k<n;k++){
       if(last.kind==="high"){
-        if(h[k]>last.price){ last={i:k,kind:"high",price:h[k],tent:true}; cand=null; extended=true; continue; }
+        if(h[k]>last.price){ last={i:k,kind:"high",price:h[k],tent:true,}; cand=null; extended=true; continue; }
         if(!cand||l[k]<cand.price) cand={i:k,kind:"low",price:l[k],tent:true};
       } else {
-        if(l[k]<last.price){ last={i:k,kind:"low",price:l[k],tent:true}; cand=null; extended=true; continue; }
+        if(l[k]<last.price){ last={i:k,kind:"low",price:l[k],tent:true,}; cand=null; extended=true; continue; }
         if(!cand||h[k]>cand.price) cand={i:k,kind:"high",price:h[k],tent:true};
       }
     }
@@ -276,8 +276,32 @@ function computeLevels(){
     for(let j=hitFrom(A);j<n;j++){ if(D.l[j]<=lvl && lvl<=D.h[j]) return true;
       if(j>0 && ((D.h[j-1]<lvl && D.l[j]>lvl) || (D.l[j-1]>lvl && D.h[j]<lvl))) return true; } // gapped through
     return false; };
+  // HELD levels at the most recent pivot Q: the latest pivot with at least one bar after it
+  // (normally the latest confirmed pivot; a just-formed tentative low/high that has not yet
+  // got Swing bars of confirmation counts as soon as one bar has held it). A level that Q tested and held stays
+  // visible even though Q's bars traded through it:
+  //   * level lies on the side Q tested (support below its anchor for a pivot low,
+  //     resistance above its anchor for a pivot high), anchored before Q;
+  //   * it is within the test zone: between Q's extreme and Q's close (the pivot bar traded
+  //     through it and closed back), allowing the close to be up to 1/4 ATR14 beyond it;
+  //   * no bar CLOSED beyond it between its anchor and the start of the leg into Q
+  //     (the previous opposite pivot) — otherwise it was already broken earlier;
+  //   * no bar after Q has CLOSED beyond it (intrabar retests that close back are OK).
+  // Closes beyond it during the leg into Q are part of the test.
+  let QI=-1; for(let k=P.length-1;k>=0;k--){ if(P[k].i<n-1){ QI=k; break; } }
+  const Q = QI>0 ? P[QI] : null, legStart = Q ? P[QI-1].i : 0;
+  let zoneW=0; if(Q){ let s=0,c=0; for(let k=Math.max(0,Q.i-14);k<=Q.i;k++){ s+=D.h[k]-D.l[k]; c++; } zoneW=Math.max(D.h[Q.i]-D.l[Q.i], c? s/c : 0); }
+  const held=(A, lvl)=>{
+    if(!Q || A.i>=Q.i) return false;
+    const lo = Q.kind==="low";
+    const qc=D.c[Q.i], eps=0.25*zoneW;
+    if(lo ? !(lvl<A.price && lvl>=Q.price && lvl<=qc+eps) : !(lvl>A.price && lvl<=Q.price && lvl>=qc-eps)) return false;
+    const beyond=(j)=> lo ? D.c[j]<lvl : D.c[j]>lvl;
+    for(let j=A.i+1;j<=legStart;j++) if(beyond(j)) return false;
+    for(let j=Q.i+1;j<n;j++) if(beyond(j)) return false;
+    return true; };
   const minStart = P[Math.max(0,last-1)].i;
-  const add=(o)=>{ o.hit=hit(o.anchor,o.price); o.hitFrom=hitFrom(o.anchor); o.anchorDate=o.anchor.date; o.anchorTent=!!o.anchor.tent; o.start=Math.max(o.anchor.i, Math.min(minStart,o.anchor.i)); out.push(o); };
+  const add=(o)=>{ o.hit=hit(o.anchor,o.price); if(o.hit && held(o.anchor,o.price)){ o.hit=false; o.held=true; o.heldAt=Q.date; o.heldI=Q.i; } o.hitFrom=hitFrom(o.anchor); o.anchorDate=o.anchor.date; o.anchorTent=!!o.anchor.tent; o.start=Math.max(o.anchor.i, Math.min(minStart,o.anchor.i)); out.push(o); };
   for(let e=last;e>=Math.max(1,last-depth+1);e--){
     const E=P[e]; let used=0;
     for(let s=e-1;s>=0&&s>=e-7&&used<3;s-=2){
@@ -535,10 +559,11 @@ function draw(){
   for(const v of levels){
     const y=Math.round(yOf(v.price))+0.5; if(y<L.top||y>L.mainB) continue;
     const x=Math.max(2, xOf(v.start)-B/2);
-    ctx.strokeStyle=lvColor(v); ctx.lineWidth = v.r===1||v.r===0.618||v.r===1.618 ? 2 : 1.5;
+    ctx.strokeStyle=lvColor(v); ctx.lineWidth = (v.r===1||v.r===0.618||v.r===1.618 ? 2 : 1.5) + (v.held?1:0);
     if(v.hit) ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(L.x1-2,y); ctx.stroke(); ctx.setLineDash([]);
-    labs.push({y, txt:lvText(v), col:lvColor(v)});
+    if(v.held){ const xh=xOf(v.heldI); ctx.fillStyle=lvColor(v); ctx.beginPath(); ctx.arc(xh,y,3,0,7); ctx.fill(); }
+    labs.push({y, txt:lvText(v)+(v.held?" held":""), col:lvColor(v)});
   }
 
   // OHLC bars
@@ -714,7 +739,7 @@ function fillTables(){
   const exN=P.filter(p=>DTP_EX.has(p.date)).length;
   $("tblTime").innerHTML = `<tr><th class=l>Date</th><th class=l>Turn</th><th>Strength</th><th class=l>Projections (±band)${exN?` · ${exN} pivot(s) excluded`:""}</th></tr>` + rows.slice(0,10).map(([q,k])=>`<tr><td class=l>${dtpDateLbl(q)}</td><td class=l>${k}</td><td>${Math.round(q.h*100)}%</td><td class=l>${q.src.join("<br>")}</td></tr>`).join("");
   $("tblPiv").innerHTML = `<tr><th class=l>Date</th><th class=l>Kind</th><th>Price</th><th>Chg</th><th>${D.tf==="1wk"?"Wk":"TB"}</th><th class=l title="Click a pivot label on the chart to include/exclude it from the DTP">DTP</th></tr>` + P.slice(-14).reverse().map(p=>`<tr><td class=l>${dtLabel(p.date)}${p.tent?" (tent.)":""}</td><td class=l>${p.kind}</td><td>${fmt(p.price)}</td><td>${p.chg==null?"":fmt(p.chg)}</td><td>${p.tb??""}</td><td class=l>${p.tent?"–":(DTP_EX.has(p.date)?"excluded":"used")}</td></tr>`).join("");
-  $("tblLv").innerHTML = "<tr><th>Price</th><th class=l>Type</th><th class=l>Swing</th></tr>" + [...v].sort((a,b)=>b.price-a.price).map(x=>`<tr><td style="color:${lvColor(x)}">${fmt(x.price)}</td><td class=l>${x.type==="EX"?"EX Ret":x.type} ${x.r.toFixed(3)}${x.hit?" (hit)":""}</td><td class=l>${x.desc}</td></tr>`).join("");
+  $("tblLv").innerHTML = "<tr><th>Price</th><th class=l>Type</th><th class=l>Swing</th></tr>" + [...v].sort((a,b)=>b.price-a.price).map(x=>`<tr><td style="color:${lvColor(x)}">${fmt(x.price)}</td><td class=l>${x.type==="EX"?"EX Ret":x.type} ${x.r.toFixed(3)}${x.hit?" (hit)":""}${x.held?` (held at ${dtLabel(x.heldAt)})`:""}</td><td class=l>${x.desc}</td></tr>`).join("");
 }
 
 // ---------- data ----------

@@ -100,7 +100,9 @@ if __name__ == "__main__" and "--levels" not in sys.argv:
 # Needs the server running and `pip install playwright` (uses system Chrome
 # if PLAYWRIGHT_CHROME is set, else playwright's bundled Chromium).
 # Rule: a drawn level is invalid if any bar after its anchor pivot (the bar
-# where the level becomes defined, tentative or not) has low <= level <= high.
+# where the level becomes defined, tentative or not) has low <= level <= high,
+# unless it is marked "held" at the most recent pivot (then: no close beyond it
+# after that pivot bar).
 def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) -> int:
     import json
     import os
@@ -117,10 +119,10 @@ def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) ->
         for t in tickers:
             pg = b.new_page(viewport={"width": 1280, "height": 820})
             pg.add_init_script("localStorage.clear()")
-            pg.goto(f"{base}/?t={t}&tf=1d")
+            pg.goto(f"{base}/?t={t}&tf=1d")  # daily
             pg.wait_for_function("document.getElementById('status').textContent.includes(' bars ·')", timeout=60000)
             info = pg.evaluate("""() => ({
-                levels: visibleLevels().map(v => ({price: v.price, txt: lvlText(v), anchor: v.anchorDate, tent: v.anchorTent})),
+                levels: visibleLevels().map(v => ({price: v.price, txt: lvlText(v), anchor: v.anchorDate, tent: v.anchorTent, held: !!v.held, heldAt: v.heldAt || null, kind: v.held ? P.find(p => p.date === v.heldAt).kind : null})),
                 zones: ZN.map(z => ({label: z.label, members: z.levels.map(v => v.price)})),
                 pivots: P.map(p => ({date: p.date, tent: !!p.tent})),
             })""".replace("lvlText", "lvText"))
@@ -133,14 +135,26 @@ def check_levels(base: str, tickers: list[str], shots_dir: str | None = None) ->
             idx = {d: i for i, d in enumerate(dates)}
             conf = [p["date"] for p in info["pivots"] if not p["tent"]]
             bad = []
+            closes = h["closes"]
             for lv in info["levels"]:
                 a = idx[lv["anchor"]]
+                if lv["held"]:
+                    # held at the latest pivot: allowed to be traded through by the
+                    # leg into that pivot, but no close beyond it after the pivot bar
+                    q = idx[lv["heldAt"]]
+                    is_low = lv["kind"] == "low"
+                    for j in range(q + 1, len(dates)):
+                        if (closes[j] < lv["price"]) if is_low else (closes[j] > lv["price"]):
+                            bad.append(f"{lv['txt']} held at {lv['heldAt']} but closed beyond {dates[j]}")
+                            break
+                    continue
                 start = a + 1
                 for j in range(start, len(dates)):
                     if hi[j] is not None and lo[j] <= lv["price"] <= hi[j]:
                         bad.append(f"{lv['txt']} (anchor {lv['anchor']}) touched {dates[j]} [{lo[j]}-{hi[j]}]")
                         break
-            print(f"{t}: {len(info['levels'])} drawn levels, {len(info['zones'])} zones -> {'OK' if not bad else 'FAIL'}")
+            nh = sum(1 for lv in info["levels"] if lv["held"])
+            print(f"{t}: {len(info['levels'])} drawn levels ({nh} held), {len(info['zones'])} zones -> {'OK' if not bad else 'FAIL'}")
             for x in bad:
                 print("   ", x)
             failures += len(bad)
