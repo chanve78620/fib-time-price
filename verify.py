@@ -49,6 +49,33 @@ EXPECTED = [
 ]
 
 
+def check_propulsion() -> bool:
+    import re
+    import shutil
+    import subprocess
+    exp = {(0.236, 0.472): (116.09, 118.18), (0.25, 0.5): (116.21, 118.43)}
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"), encoding="utf-8").read()
+    m = re.search(r"^function propLevels\(.*$", src, re.M)
+    if not m:
+        print("  FAIL  propLevels() not found in index.html")
+        return False
+    ok = True
+    node = shutil.which("node")
+    for (r1, r2), (ea, eb) in exp.items():
+        if node:
+            js = m.group(0) + f"\nconst o=propLevels(109.00,117.88,113.99,'up',{r1},{r2});console.log(o.A+' '+o.B);"
+            a, b = map(float, subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.split())
+            how = "JS"
+        else:  # same formula in Python if node is unavailable
+            R = 117.88 - 109.00
+            a, b = 113.99 + r1 * R, 113.99 + r2 * R
+            how = "py"
+        good = round(a, 2) == ea and round(b, 2) == eb
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  TD Propulsion Up {r1}/{r2} ({how}): A={a:.2f} (exp {ea})  B={b:.2f} (exp {eb})")
+    return ok
+
+
 def main():
     date1 = date(2026, 3, 30)
     date2 = date(2026, 8, 13)
@@ -81,6 +108,10 @@ def main():
     assert abs(raw_382 - 51.952) < 1e-9, raw_382
     assert round(raw_382) == 52
     assert floor(raw_382) == 51
+
+    # TD Propulsion (Perl, USD/JPY Fig. 6.7): run the chart's own JS propLevels()
+    if not check_propulsion():
+        failures.append("propulsion")
 
     if failures:
         print("FAIL")

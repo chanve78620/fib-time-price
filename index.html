@@ -92,6 +92,13 @@
     <button id="zoomOut" title="Zoom out">−</button>
     <button id="zoomReset" title="Reset view (double-click chart)">Reset</button>
   </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="propBtn" title="TD Propulsion: click X, Y, Z on the chart (Esc cancels)">Propulsion</button>
+    <select id="propR" title="TD Propulsion ratios"><option value="demark">23.6/47.2%</option><option value="bbg">25/50% (Bloomberg)</option></select>
+    <button id="propClear" title="Remove all propulsion drawings for this ticker/timeframe">Clear</button>
+    <span id="propHint" style="color:#7a5a00;font-weight:bold"></span>
+  </div>
   <span id="status"></span>
 </div>
 
@@ -107,6 +114,7 @@
     <div><b>DTP time clusters (upcoming)</b><table id="tblTime"></table></div>
     <div><b>Swing pivots</b><table id="tblPiv"></table></div>
     <div><b>Active price levels</b><table id="tblLv"></table></div>
+    <div><b>TD Propulsion</b><table id="tblProp"></table></div>
   </div>
 </details>
 <details>
@@ -500,7 +508,7 @@ function draw(){
   const {W,H}=L; ctx.clearRect(0,0,W,H); ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
   if(!D){ ctx.fillStyle="#666"; ctx.font="14px Tahoma, Arial"; ctx.fillText("Enter a ticker and press Load",20,60); return; }
   const levels=visibleLevels();
-  computeY(levels);
+  computeY(levels.concat(propPrices()));
   const B=bw(); const iA=Math.floor(view.right-view.count+1), iB=Math.ceil(view.right);
   const sym=D.label;
 
@@ -558,6 +566,8 @@ function draw(){
     if(v.held){ const xh=xOf(v.heldI); ctx.fillStyle=lvColor(v); ctx.beginPath(); ctx.arc(xh,y,3,0,7); ctx.fill(); }
     labs.push({y, txt:lvText(v)+(v.held?" held":""), col:lvColor(v)});
   }
+
+  drawProps(labs);
 
   // OHLC bars
   const tick=Math.max(1.5,Math.min(B*0.32,6)); ctx.lineWidth=B>6?1.6:1; ctx.strokeStyle="#000";
@@ -760,7 +770,7 @@ async function load(){
     const ov=(q.get("ohlc")||"").split(",").map(Number); if(D.n && ov.length===4 && ov.every(isFinite)){ const k=D.n-1; [D.o[k],D.h[k],D.l[k],D.c[k]]=ov; }
     if(!D.n){ setStatus("No bars returned", true); D=null; draw(); return; }
     D.tf = TFS[j.tf] ? j.tf : tf; D.intraday = !!j.intraday || TFS[D.tf].mins>0; D.mins=TFS[D.tf].mins; D.session=j.session||"rth";
-    FUT = TFS[D.tf].fut; loadEx();
+    FUT = TFS[D.tf].fut; loadEx(); loadProps(); PICK=null; propHint();
     D.future=genFuture(D.dates[D.n-1]);
     layout(); resetView(); recompute();
     setStatus(`${j.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones · ${j.source==="fmp"?"FMP":"Yahoo"}`);
@@ -768,7 +778,7 @@ async function load(){
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
 
-const KEYS=["ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
+const KEYS=["propR","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
 function save(){ const o={v:3}; for(const k of KEYS){ const el=$(k); o[k]= el.type==="checkbox"? el.checked : el.value; } try{ localStorage.setItem("ftp2",JSON.stringify(o)); }catch(_){} }
 function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{}"); }catch(_){}
   if(o.v!==3){ delete o.dtpMin; delete o.band; delete o.maxLv; } // DTP defaults changed (fitted model)
@@ -778,6 +788,106 @@ function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{
   for(const k of KEYS){ if(k==="tf"||k==="period"||!(k in o)) continue; const el=$(k); if(el.type==="checkbox") el.checked=o[k]; else el.value=o[k]; }
   if(o.tf!==tf || !("tol" in o)) $("tol").value = ({"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05})[tf] ?? 0.25;
   const t=q.get("t"); if(t) $("ticker").value=t; }
+
+// ---------- TD Propulsion (Perl, "DeMark Indicators" 2008, ch. 6) ----------
+// User picks X, Y, Z with the mouse (Propulsion button). Up: X low, Y high, Z pullback low;
+// R=Y−X, A (trigger)=Z+r1·R, B (target)=Z+r2·R; cancelled if price trades below X.
+// Down mirrors it. r1/r2 = 0.236/0.472 (DeMark) or 0.25/0.50 (Bloomberg).
+// Qualifiers: pullback into Z from the close of the Y bar ≥ r1·R, and pullback into X from the
+// close of the prior opposite pivot bar ≥ r1·R. Breakout qualifiers when A is crossed (any one):
+// prior close < close 2 bars back; breakout bar opens beyond A; prior close + (prior close −
+// prior true low) < A (flipped for down).
+function propRatios(){ return ($("propR") && $("propR").value==="bbg") ? [0.25,0.5] : [0.236,0.472]; }
+function propLevels(X,Y,Z,side,r1,r2){ const R = side==="up" ? Y-X : X-Y; return side==="up" ? {R, A:Z+r1*R, B:Z+r2*R} : {R, A:Z-r1*R, B:Z-r2*R}; }
+let PROPS=[]; let PICK=null; // PICK = {pts:[{i,kind}]} while picking
+function propKey(){ return D? `ftpProp:${D.ticker}:${D.tf}` : ""; }
+function loadProps(){ try{ PROPS=JSON.parse(localStorage.getItem(propKey())||"[]"); }catch(_){ PROPS=[]; } }
+function saveProps(){ try{ localStorage.setItem(propKey(), JSON.stringify(PROPS)); }catch(_){} }
+function propEval(pr){
+  const ix=D.dates.indexOf(pr.x), iy=D.dates.indexOf(pr.y), iz=D.dates.indexOf(pr.z); if(ix<0||iy<0||iz<0) return null;
+  const up=pr.side==="up", [r1,r2]=propRatios();
+  const X= up? D.l[ix]:D.h[ix], Y= up? D.h[iy]:D.l[iy], Z= up? D.l[iz]:D.h[iz];
+  const {R,A,B}=propLevels(X,Y,Z,pr.side,r1,r2);
+  const o={ix,iy,iz,X,Y,Z,R,A,B,up,r1,r2};
+  o.qZ = up ? D.c[iy]-Z >= r1*R : Z-D.c[iy] >= r1*R;
+  const prior=[...P].reverse().find(p=>p.i<ix && p.kind===(up?"high":"low") && !p.tent);
+  o.priorDate = prior? prior.date : null;
+  o.qX = prior ? (up ? D.c[prior.i]-X >= r1*R : X-D.c[prior.i] >= r1*R) : null;
+  o.valid = R>0 && (up ? Z>X : Z<X) && ix<iy && iy<iz;
+  o.qualified = o.valid && o.qZ && o.qX===true;
+  for(let i=iz+1;i<D.n;i++){
+    if(up ? D.l[i]<X : D.h[i]>X){ o.cancelI=i; break; }
+    if(o.trigI==null && (up ? D.h[i]>A : D.l[i]<A)){
+      o.trigI=i; const c1=D.c[i-1], c2=D.c[i-2], op=D.o[i];
+      const tl = i>=2 ? Math.min(D.l[i-1], D.c[i-2]) : D.l[i-1], th = i>=2 ? Math.max(D.h[i-1], D.c[i-2]) : D.h[i-1];
+      o.bq = up ? [c1<c2, op>A, c1+(c1-tl)<A] : [c1>c2, op<A, c1-(th-c1)>A];
+    }
+    if(o.trigI!=null && (up ? D.h[i]>=B : D.l[i]<=B)){ o.targI=i; break; }
+  }
+  return o;
+}
+function propStatus(o){
+  const ck=(b)=> b===true?"✓":b===false?"✗":"–";
+  let s=`${o.up?"Prop Up":"Prop Down"} ${o.qualified?"qualified":"not qualified"} (Z ${ck(o.qZ)}, X ${ck(o.qX)})`;
+  if(!o.valid) s+=" · invalid X/Y/Z";
+  if(o.trigI!=null){ s+=` · triggered ${dtLabel(D.dates[o.trigI])}`; const n=["prior close","open beyond A","pressure"]; const m=o.bq.map((b,k)=>b?n[k]:null).filter(Boolean); s+= m.length? ` (breakout: ${m.join(", ")})` : " (breakout unqualified)"; }
+  if(o.targI!=null) s+=` · target hit ${dtLabel(D.dates[o.targI])}`;
+  if(o.cancelI!=null) s+=` · cancelled ${dtLabel(D.dates[o.cancelI])}`;
+  if(o.trigI==null && o.cancelI==null) s+=" · pending";
+  return s;
+}
+function propPrices(){ if(!D) return []; const out=[]; for(const pr of PROPS){ const o=propEval(pr); if(o) out.push({price:o.A},{price:o.B}); } return out; }
+function drawProps(labs){
+  const B=bw(); let row=0;
+  const evals=PROPS.map(pr=>propEval(pr));
+  evals.forEach((o,k)=>{ if(!o) return;
+    const col=o.up?"#0b7d8c":"#b0458c";
+    const px=(i)=>xOf(i), py=(p)=>yOf(p);
+    ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(px(o.ix),py(o.X)); ctx.lineTo(px(o.iy),py(o.Y)); ctx.lineTo(px(o.iz),py(o.Z)); ctx.stroke();
+    ctx.font="bold 12px Tahoma, Arial"; ctx.fillStyle=col; ctx.textAlign="center";
+    const lab=(t,i,p,below)=>{ ctx.textBaseline=below?"top":"bottom"; ctx.fillText(t, px(i), py(p)+(below?4:-4)); };
+    lab("X",o.ix,o.X,o.up); lab("Y",o.iy,o.Y,!o.up); lab("Z",o.iz,o.Z,o.up);
+    const x0=Math.max(2,px(o.iz)-B/2);
+    for(const [v,lw,dash,t] of [[o.A,1.6,[],`Prop A ${fmt(o.A)}`],[o.B,1.6,[],`Prop B ${fmt(o.B)}`],[o.X,1,[5,4],`Prop X ${fmt(o.X)} (cancel)`]]){
+      const y=Math.round(py(v))+0.5; if(y<L.top||y>L.mainB) continue;
+      const xs = t.startsWith("Prop X") ? Math.max(2,px(o.ix)) : x0;
+      ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(xs,y); ctx.lineTo(L.x1-2,y); ctx.stroke(); ctx.setLineDash([]);
+      labs.push({y, txt:t, col});
+    }
+    for(const [i,mk] of [[o.trigI,"A"],[o.targI,"B"],[o.cancelI,"✗"]]) if(i!=null){ const v=mk==="A"?o.A:mk==="B"?o.B:o.X; ctx.beginPath(); ctx.arc(px(i),py(v),3.5,0,7); ctx.fill(); }
+    // status line (top-left, below the EMA legend)
+    ctx.font="11px Tahoma, Arial"; ctx.textAlign="left"; ctx.textBaseline="top";
+    const txt=`${k+1}. ${propStatus(o)}`; const tw=ctx.measureText(txt).width; const ty=L.top+padT()+2+row*13;
+    ctx.fillStyle="rgba(255,255,255,0.85)"; ctx.fillRect(4,ty-1,tw+4,13); ctx.fillStyle=col; ctx.fillText(txt,6,ty); row++;
+    ctx.restore();
+  });
+  const tb=$("tblProp"); if(tb) tb.innerHTML = evals.some(Boolean) ? "<tr><th>#</th><th class=l>X / Y / Z</th><th>A</th><th>B</th><th class=l>Status</th></tr>" + evals.map((o,k)=> o? `<tr><td>${k+1}</td><td class=l>${fmt(o.X)} ${dtLabel(D.dates[o.ix])}<br>${fmt(o.Y)} ${dtLabel(D.dates[o.iy])}<br>${fmt(o.Z)} ${dtLabel(D.dates[o.iz])}</td><td>${fmt(o.A)}</td><td>${fmt(o.B)}</td><td class=l>${propStatus(o)}${o.priorDate?`<br>X qualifier vs close of ${dtLabel(o.priorDate)}`:"<br>X qualifier: no prior pivot loaded"}</td></tr>` : "").join("") : "<tr><td class=l>Click <b>Propulsion</b>, then X, Y, Z on the chart.</td></tr>";
+  if(PICK){ ctx.save(); ctx.fillStyle="#0b7d8c"; for(const q of PICK.pts){ ctx.beginPath(); ctx.arc(xOf(q.i), yOf(q.kind==="low"?D.l[q.i]:q.kind==="high"?D.h[q.i]:(D.h[q.i]+D.l[q.i])/2), 4, 0, 7); ctx.fill(); }
+    ctx.font="bold 13px Tahoma, Arial"; ctx.textAlign="center"; ctx.textBaseline="top";
+    const t=`Propulsion: pick ${["X","Y","Z"][PICK.pts.length]} (click a bar or pivot label · Esc cancels)`; const tw=ctx.measureText(t).width;
+    ctx.fillStyle="#fffbe0"; ctx.fillRect(L.x1/2-tw/2-6, L.top+2, tw+12, 18); ctx.fillStyle="#7a5a00"; ctx.fillText(t, L.x1/2, L.top+4); ctx.restore(); }
+}
+function propHint(){ const h=$("propHint"); if(h) h.textContent = PICK ? `pick ${["X","Y","Z"][PICK.pts.length]}` : ""; $("propBtn").classList.toggle("primary", !!PICK); }
+function propClick(x,y){
+  // returns true if the click was consumed by pick mode
+  if(!PICK || !D) return false;
+  const h=PIVR.find(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
+  let i, kind=null;
+  if(h){ i=h.p.i; kind=h.p.kind; } else { i=Math.max(0,Math.min(D.n-1,iOfX(x))); }
+  const k=PICK.pts.length;
+  if(k===0){ if(!kind){ const p=yToP(y); kind = Math.abs(p-D.l[i]) <= Math.abs(p-D.h[i]) ? "low" : "high"; kind=kind+"?"; } PICK.pts.push({i,kind}); }
+  else if(k===1){ const X=PICK.pts[0]; if(i<=X.i) return true;
+    let up; if(X.kind==="low"||X.kind==="high") up = X.kind==="low"; else up = (D.h[i]+D.l[i]) > (D.h[X.i]+D.l[X.i]);
+    X.kind = up?"low":"high"; PICK.pts.push({i,kind: up?"high":"low"}); }
+  else { const X=PICK.pts[0], Yp=PICK.pts[1]; if(i<=Yp.i) return true; PICK.pts.push({i,kind:X.kind});
+    PROPS.push({side: X.kind==="low"?"up":"down", x:D.dates[X.i], y:D.dates[Yp.i], z:D.dates[i]}); saveProps(); PICK=null; }
+  propHint(); draw(); return true;
+}
+function yToP(y){ const pt=padT(); return Y.hi - (y-L.top-pt)/(L.mainB-L.top-2*pt)*(Y.hi-Y.lo); }
+// self-test (Perl USD/JPY example, Fig. 6.7): A=116.09, B=118.18 (Bloomberg 116.21 / 118.43)
+(function(){ const a=propLevels(109.00,117.88,113.99,"up",0.236,0.472), b=propLevels(109.00,117.88,113.99,"up",0.25,0.5);
+  const ok = Math.abs(a.A-116.09)<0.006 && Math.abs(a.B-118.18)<0.006 && Math.abs(b.A-116.21)<0.006 && Math.abs(b.B-118.43)<0.006;
+  window.PROP_SELFTEST=ok; if(!ok) console.error("TD Propulsion self-test failed", a, b); })();
 
 // ---------- interaction ----------
 function zoomAt(factor, x){
@@ -806,7 +916,8 @@ cv.addEventListener("pointermove",(e)=>{ const r=cv.getBoundingClientRect(); con
 let clickAt=null;
 function endPtr(e){
   if(e.type==="pointerup" && clickAt && ptrs.size===1 && D){ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top;
-    if(Math.hypot(x-clickAt.x,y-clickAt.y)<5 && Date.now()-clickAt.t<600){ const h=PIVR.find(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
+    if(Math.hypot(x-clickAt.x,y-clickAt.y)<5 && Date.now()-clickAt.t<600){ if(propClick(x,y)){ clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size===0) drag=null; return; }
+      const h=PIVR.find(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
       if(h){ const k=h.p.date; if(DTP_EX.has(k)) DTP_EX.delete(k); else DTP_EX.add(k); saveEx(); recompute(); } } }
   clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch=null; if(ptrs.size===0) drag=null; }
 cv.addEventListener("pointerup",endPtr); cv.addEventListener("pointercancel",endPtr);
@@ -829,6 +940,10 @@ $("period").onchange=load;
 const TOL_DEF={"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05};
 $("tf").onchange=()=>{ const tf=$("tf").value; fillPeriods(tf, null); $("tol").value=TOL_DEF[tf]??0.25; load(); };
 for(const k of ["swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
+$("propBtn").onclick=()=>{ PICK = PICK ? null : {pts:[]}; propHint(); draw(); };
+$("propClear").onclick=()=>{ PROPS=[]; saveProps(); PICK=null; propHint(); draw(); };
+$("propR").onchange=()=>{ save(); draw(); };
+window.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && PICK){ PICK=null; propHint(); draw(); } });
 $("zoomIn").onclick=()=>zoomAt(1/1.25); $("zoomOut").onclick=()=>zoomAt(1.25); $("zoomReset").onclick=()=>{resetView();draw();};
 window.addEventListener("resize",()=>{ sizeWrap(); draw(); });
 
