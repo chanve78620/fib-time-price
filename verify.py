@@ -73,6 +73,49 @@ def check_propulsion() -> bool:
         good = round(a, 2) == ea and round(b, 2) == eb
         ok &= good
         print(f"  {'PASS' if good else 'FAIL'}  TD Propulsion Up {r1}/{r2} ({how}): A={a:.2f} (exp {ea})  B={b:.2f} (exp {eb})")
+    # Bloomberg GDXJ 30m (Oct 2026) calibration: trigger 110.7613 and full propulsion 117.305 are
+    # reproduced exactly by A = Z + 0.25R and F = Z + 1.0R with X=103.675, Y=112.40, Z=108.58
+    # (Bloomberg prints; FMP has 103.68 / 108.59). Bloomberg's 113.2125 is NOT Z + 0.5R (=112.9425).
+    if node:
+        js = m.group(0) + "\nconst o=propLevels(103.675,112.40,108.58,'up',0.25,0.5);console.log(o.A+' '+o.F);"
+        a, f = map(float, subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.split())
+        good = round(a, 4) == 110.7613 and round(f, 4) == 117.305
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  Bloomberg GDXJ calibration (JS): A={a:.4f} (exp 110.7613)  Full={f:.4f} (exp 117.3050)")
+    return ok
+
+
+def check_breakout_qualifiers() -> bool:
+    """Unit test of propBreakQual() (DeMark TD Line breakout qualifiers) on synthetic bars."""
+    import json
+    import re
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        print("  SKIP  breakout qualifiers (node not installed)")
+        return True
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"), encoding="utf-8").read()
+    m = re.search(r"^function propBreakQual\(.*?^}$", src, re.M | re.S)
+    if not m:
+        print("  FAIL  propBreakQual() not found in index.html")
+        return False
+    # (name, o, h, l, c, level, up, expected [Q1, Q2, Q3, Q4], expected qualified)
+    cases = [
+        ("up Q1 prior down close", [9, 9.6, 9.1], [9.7, 9.8, 10.2], [8.9, 8.0, 9.0], [9.5, 9.2, 10.1], 10, True, [True, False, False, False], True),
+        ("up Q2 gap open + follow-through", [9, 9.6, 10.05], [9.7, 9.9, 10.3], [8.9, 9.0, 10.0], [9.5, 9.8, 10.2], 10, True, [False, True, False, True], True),
+        ("up gap open, no follow-through", [9, 9.6, 10.05], [9.7, 9.9, 10.05], [8.9, 9.0, 9.9], [9.5, 9.8, 10.0], 10, True, [False, False, False, False], False),
+        ("up Q3 demand below level", [9, 9.1, 9.4], [9.2, 9.5, 10.2], [8.9, 9.2, 9.3], [9.0, 9.3, 10.1], 10, True, [False, False, True, True], True),
+        ("down Q1 prior up close", [10.6, 10.6, 10.7], [10.9, 12.0, 10.8], [10.4, 10.5, 9.8], [10.5, 10.8, 9.9], 10, False, [True, False, False, False], True),
+        ("down none (prior down close, demand too far)", [10.6, 10.6, 10.3], [10.9, 10.7, 10.4], [10.4, 10.2, 9.9], [10.5, 10.3, 10.0], 10, False, [False, False, False, False], False),
+    ]
+    ok = True
+    for name, o, h, l, c, lvl, up, exp_q, exp_ok in cases:
+        js = m.group(0) + f"\nconsole.log(JSON.stringify(propBreakQual({o},{h},{l},{c},2,{lvl},{str(up).lower()},0.01)));"
+        r = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+        good = r["q"] == exp_q and r["ok"] == exp_ok
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  qualifiers: {name}: q={r['q']} ok={r['ok']} (exp {exp_q} {exp_ok})")
     return ok
 
 
@@ -112,6 +155,8 @@ def main():
     # TD Propulsion (Perl, USD/JPY Fig. 6.7): run the chart's own JS propLevels()
     if not check_propulsion():
         failures.append("propulsion")
+    if not check_breakout_qualifiers():
+        failures.append("breakout qualifiers")
 
     if failures:
         print("FAIL")
