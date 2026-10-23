@@ -15,3 +15,7 @@ services:
       # in Render > fib-time-price > Environment; never commit it.
       - key: FMP_API_KEY
         sync: false
+      # Contact string for SEC EDGAR requests (fair-access policy), e.g. "Your Name you@example.com".
+      # Enables the IPO offer-price cross-check / fallback against the SEC 424B4 filing.
+      - key: SEC_USER_AGENT
+        sync: false

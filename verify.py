@@ -119,6 +119,92 @@ def check_breakout_qualifiers() -> bool:
     return ok
 
 
+def check_ipo_grid() -> bool:
+    """IPO grid: JS ipoLevels() line generation, server split math and 424B4 cover-price parser."""
+    import json
+    import re
+    import shutil
+    import subprocess
+    ok = True
+    node = shutil.which("node")
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"), encoding="utf-8").read()
+    m = re.search(r"^function ipoLevels\(.*?^}$", src, re.M | re.S)
+    if not node or not m:
+        print("  SKIP  ipoLevels (node not installed)" if not node else "  FAIL  ipoLevels() not found in index.html")
+        ok &= bool(not node)
+    else:
+        # (name, ipo, mult, lo, hi, below, expected-first-and-count or exact list)
+        cases = [
+            ("IPO 10, step 0.5x -> 10,15,20,25,30", 10, 0.5, 8, 31, False, [10, 15, 20, 25, 30]),
+            ("below IPO, never <= 0 (5,10,..)", 10, 0.5, 0, 30, True, [5, 10, 15, 20, 25, 30]),
+            ("no lines below when 'Below' off", 10, 0.5, 0, 30, False, [10, 15, 20, 25, 30]),
+            ("step 1.0x", 68, 1.0, 100, 300, True, [136, 204, 272]),
+            ("range entirely below IPO", 68, 0.5, 5, 20, True, [])
+        ]
+        for name, ipo, mult, lo, hi, below, exp in cases:
+            js = m.group(0) + f"\nconsole.log(JSON.stringify(ipoLevels({ipo},{mult},{lo},{hi},{str(below).lower()},5000)));"
+            got = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+            good = [round(x, 6) for x in got] == exp
+            ok &= good
+            print(f"  {'PASS' if good else 'FAIL'}  ipoLevels: {name}: {got} (exp {exp})")
+        js = m.group(0) + "\nconst a=ipoLevels(10,0.5,0,100000,true,5000);console.log(a.length+' '+a[a.length-1]);"
+        n, last = subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.split()
+        good = (int(n), float(last)) == (5000, 25000.0)  # no upper limit other than the 5000-line safety cap
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  ipoLevels: very tall range reaches {last} with {n} lines (cap 5000)")
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import server as S
+    except Exception as e:  # noqa: BLE001
+        print(f"  SKIP  server-side IPO checks (cannot import server.py: {type(e).__name__})")
+        return ok
+    from datetime import date
+    nvda = [{"date": d, "numerator": n, "denominator": dn} for d, n, dn in
+            [("2000-06-27", 2, 1), ("2001-09-12", 2, 1), ("2006-04-07", 2, 1), ("2007-09-11", 3, 2), ("2021-07-20", 4, 1), ("2024-06-10", 10, 1)]]
+    f, _ = S._split_factor(nvda, date(1999, 1, 22))
+    good = abs(f - 480) < 1e-9 and abs(12 / f - 0.025) < 1e-12
+    ok &= good
+    print(f"  {'PASS' if good else 'FAIL'}  NVDA splits after 1999-01-22: factor {f:g} (exp 480), $12 -> {12 / f:g} (exp 0.025)")
+    f, _ = S._split_factor([{"date": "2015-01-05", "numerator": 1, "denominator": 10}, {"date": "2010-01-01", "numerator": 2, "denominator": 1}], date(2012, 1, 1))
+    good = abs(f - 0.1) < 1e-12 and abs(20 / f - 200) < 1e-9
+    ok &= good
+    print(f"  {'PASS' if good else 'FAIL'}  reverse split 1:10 after IPO (2:1 before IPO ignored): factor {f:g} (exp 0.1), $20 -> {20 / f:g} (exp 200)")
+    covers = [
+        ("META 2012 cover", "PRICE $38.00 A SHARE Price to Public Underwriting Discounts Per share $38.00 $0.418 $37.582", 38.0),
+        ("NVDA 1999 cover (SGML text)", "PRICE $12 A SHARE ---- Per Share....... $12.00 $.84 $11.16", 12.0),
+        ("ABNB 2020 cover", "The initial public offering price is $68.00 per share. Per Share Total Initial public offering price $ 68.0000", 68.0),
+        ("table only", "Price to Public Underwriting discounts Per Share $ 17.00 $1.19 $15.81", 17.0),
+        ("no price", "This prospectus supplement relates to resales", None),
+    ]
+    for name, text, exp in covers:
+        got = S._parse_offer_price(text)
+        good = got == exp
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  424B4 cover parser: {name}: {got} (exp {exp})")
+    return ok
+
+
+def check_ipo_api(base: str) -> bool:
+    """Live /api/ipo checks (needs the server running with FMP_API_KEY; SEC_USER_AGENT enables the EDGAR cross-check)."""
+    import json
+    import urllib.request
+    exp = {"ABNB": (68, 1.0), "DASH": (102, 1.0), "RIVN": (78, 1.0), "TSLA": (17, 15.0)}
+    ok = True
+    for sym, (offer, f) in exp.items():
+        with urllib.request.urlopen(f"{base}/api/ipo?symbol={sym}", timeout=120) as r:
+            j = json.load(r)
+        good = j.get("found") and abs(j["offer"] - offer) < 1e-9 and abs(j["splitFactor"] - f) < 1e-9 and abs(j["adjustedOffer"] - offer / f) < 1e-3
+        ok &= bool(good)
+        print(f"  {'PASS' if good else 'FAIL'}  /api/ipo {sym}: offer={j.get('offer')} splitFactor={j.get('splitFactor')} adjusted={j.get('adjustedOffer')} ({j.get('source')})")
+    for sym, why in (("AAPL", "pre-EDGAR IPO (1980)"), ("ZZZZQ", "unknown ticker"), ("ES", "futures")):
+        with urllib.request.urlopen(f"{base}/api/ipo?symbol={sym}", timeout=120) as r:
+            j = json.load(r)
+        good = j.get("found") is False
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  /api/ipo {sym} not found ({why}): {j.get('message')}")
+    return ok
+
+
 def main():
     date1 = date(2026, 3, 30)
     date2 = date(2026, 8, 13)
@@ -157,6 +243,12 @@ def main():
         failures.append("propulsion")
     if not check_breakout_qualifiers():
         failures.append("breakout qualifiers")
+    if not check_ipo_grid():
+        failures.append("ipo grid")
+    if "--ipo" in sys.argv:
+        k = sys.argv.index("--ipo")
+        if not check_ipo_api(sys.argv[k + 1] if len(sys.argv) > k + 1 else "http://127.0.0.1:8765"):
+            failures.append("ipo api")
 
     if failures:
         print("FAIL")

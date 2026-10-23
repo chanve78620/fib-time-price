@@ -93,6 +93,15 @@
     <button id="zoomReset" title="Reset view (double-click chart)">Reset</button>
   </div>
   <div class="sep"></div>
+  <div class="grp" id="ipoGrp">
+    <span class="chk"><input type="checkbox" id="ipoOn" /><label for="ipoOn" id="ipoOnLbl" title="Horizontal lines every Step × the split-adjusted IPO offer price (offer 10, step 0.5 → 10, 15, 20, 25 …), no upper limit">IPO grid</label></span>
+    <label for="ipoStep" title="Line spacing as a multiple of the split-adjusted IPO offer price (0.5 = half the offer price)">Step×</label>
+    <input type="number" id="ipoStep" min="0.05" max="20" step="0.05" value="0.5" style="width:46px" />
+    <span class="chk"><input type="checkbox" id="ipoBelow" checked /><label for="ipoBelow" title="Also draw lines below the IPO price (down to above zero)">Below</label></span>
+    <input type="number" id="ipoManual" min="0" step="any" placeholder="IPO $" style="width:64px;display:none" title="No IPO offer price was found: type the split-adjusted IPO price (remembered per ticker)" />
+    <span id="ipoStatus" style="color:#444"></span>
+  </div>
+  <div class="sep"></div>
   <div class="grp">
     <button id="propBtn" title="TD Propulsion: click X, Y, Z on the chart (Esc cancels)">Propulsion</button>
     <select id="propR" title="TD Propulsion ratios"><option value="demark">23.6/47.2%</option><option value="bbg">25/50% (Bloomberg)</option></select>
@@ -551,6 +560,19 @@ function draw(){
   }
 
   drawDaySeparators(iA,iB);
+  // IPO grid: plain horizontal lines every step×IPO price, regenerated for whatever price range the pane shows
+  const ipoP=ipoPrice();
+  if(ipoP){
+    const pLo=Math.min(pOfY(L.mainB),pOfY(L.top)), pHi=Math.max(pOfY(L.mainB),pOfY(L.top));
+    const dense=(pHi-pLo)/(ipoP*ipoMult()) > Math.min(IPO_CAP,(L.mainB-L.top)/3); // lines < 3px apart would be a solid wash
+    if(dense!==IPO_DENSE){ IPO_DENSE=dense; ipoUI(); }
+    if(!dense){
+      const gl=ipoLevels(ipoP, ipoMult(), pLo, pHi, $("ipoBelow").checked, IPO_CAP);
+      ctx.strokeStyle=IPO_COL; ctx.lineWidth=1; ctx.beginPath();
+      for(const p of gl){ const y=Math.round(yOf(p))+0.5; if(y<L.top||y>L.mainB) continue; ctx.moveTo(1,y); ctx.lineTo(L.x1,y); }
+      ctx.stroke();
+    }
+  } else if(IPO_DENSE){ IPO_DENSE=false; ipoUI(); }
   // MAs
   if($("showMA").checked){
     for(const m of MA){ ctx.strokeStyle=m.col; ctx.lineWidth=m.dash.length?1.3:1; ctx.setLineDash(m.dash); ctx.beginPath(); let st=false;
@@ -631,6 +653,10 @@ function draw(){
       ctx.fillStyle="#000"; ctx.fillText(txt, x, y);
     }
   }
+
+  // IPO grid: single notice when no offer price is known
+  if(ipoMissing()){ ctx.font="bold 16px Tahoma, Arial"; ctx.textAlign="center"; ctx.textBaseline="middle"; const nx=L.x1/2, ny=(L.top+L.mainB)/2, nw=ctx.measureText("No IPO data").width;
+    ctx.fillStyle="rgba(255,255,255,0.85)"; ctx.fillRect(nx-nw/2-6,ny-11,nw+12,22); ctx.fillStyle="#777"; ctx.fillText("No IPO data", nx, ny); }
 
   // crosshair
   if(hover && hover.y>=L.top && hover.y<=L.mainB){
@@ -777,11 +803,12 @@ async function load(){
     D.future=genFuture(D.dates[D.n-1]);
     layout(); resetView(); recompute();
     setStatus(`${j.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones · ${j.source==="fmp"?"FMP":"Yahoo"}`);
+    ipoUI(); if($("ipoOn").checked) ipoFetch();
     save(); const u=new URL(location.href); u.searchParams.set("t",raw.toUpperCase()); u.searchParams.set("tf",D.tf); history.replaceState(null,"",u);
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
 
-const KEYS=["propR","propBasis","propFull","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
+const KEYS=["ipoOn","ipoStep","ipoBelow","propR","propBasis","propFull","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
 function save(){ const o={v:3}; for(const k of KEYS){ const el=$(k); o[k]= el.type==="checkbox"? el.checked : el.value; } try{ localStorage.setItem("ftp2",JSON.stringify(o)); }catch(_){} }
 function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{}"); }catch(_){}
   if(o.v!==3){ delete o.dtpMin; delete o.band; delete o.maxLv; } // DTP defaults changed (fitted model)
@@ -791,6 +818,58 @@ function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{
   for(const k of KEYS){ if(k==="tf"||k==="period"||!(k in o)) continue; const el=$(k); if(el.type==="checkbox") el.checked=o[k]; else el.value=o[k]; }
   if(o.tf!==tf || !("tol" in o)) $("tol").value = ({"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05})[tf] ?? 0.25;
   const t=q.get("t"); if(t) $("ticker").value=t; }
+
+// ---------- IPO grid ----------
+// Plain horizontal lines at ipo + k·(mult·ipo) for integer k (k<0 only when "Below" is ticked, price must stay > 0).
+// No upper limit: levels are regenerated on every draw for the price range the pane currently shows
+// (so zooming out / panning / a taller autoscale simply shows more lines); IPO_CAP only bounds the line count.
+// The IPO price is the split-adjusted offer price from /api/ipo (FMP / SEC filings), or a manual per-ticker value.
+const IPOS = {};                 // ticker -> /api/ipo result
+const IPO_CAP = 5000, IPO_COL = "#7f9cc4";
+const DENSE_MSG=" · lines hidden: too close together at this scale (raise Step× or zoom in)";
+let IPO_DENSE = false;      // step too fine for the visible price range: lines hidden (status says so)
+function ipoLevels(ipo, mult, lo, hi, below, cap){
+  const step=ipo*mult; if(!(ipo>0)||!(step>0)||!(hi>lo)) return [];
+  const k0=below? Math.ceil((lo-ipo)/step) : Math.max(0, Math.ceil((lo-ipo)/step)), k1=Math.floor((hi-ipo)/step);
+  const out=[]; for(let k=k0; k<=k1 && out.length<cap; k++){ const p=ipo+k*step; if(p>0) out.push(p); }
+  return out;
+}
+function ipoMult(){ const v=parseFloat($("ipoStep").value); return v>0? v : 0.5; }
+function ipoEligible(){ return !!D && !/^\^|=F$|=X$|-USDT?$/.test(D.ticker); }
+function ipoManualKey(){ return D? `ftpIpo:${D.ticker}` : ""; }
+function ipoManualVal(){ try{ const v=parseFloat(localStorage.getItem(ipoManualKey())); return v>0? v : null; }catch(_){ return null; } }
+function ipoRec(){ return D? IPOS[D.ticker] : null; }
+function ipoNoOffer(){ const r=ipoRec(); return !!(D && $("ipoOn").checked && ipoEligible() && r && !r.found); }
+function ipoPrice(){ if(!D||!$("ipoOn").checked||!ipoEligible()) return null; const r=ipoRec(); if(!r) return null; return r.found? r.adjustedOffer : ipoManualVal(); }
+function ipoMissing(){ return ipoNoOffer() && ipoManualVal()==null; }
+function ipoNum(x){ return String(+Number(x).toFixed(4)); }
+function ipoUI(){
+  const on=$("ipoOn"), st=$("ipoStatus"), man=$("ipoManual"); const ok=ipoEligible();
+  on.disabled=!D||!ok; $("ipoOnLbl").style.color = on.disabled? "#888":"";
+  if(D && !ok){ st.textContent="IPO grid n/a (futures, index, FX, crypto)"; man.style.display="none"; st.title=""; return; }
+  const r=ipoRec(); st.title=""; st.style.color="#444";
+  man.style.display = ipoNoOffer()? "" : "none";
+  if(!on.checked || !D){ st.textContent=""; return; }
+  if(!r){ st.textContent="IPO offer: looking up …"; return; }
+  if(!r.found && ipoManualVal()){ st.textContent=`manual IPO price $${ipoNum(ipoManualVal())} (offer price not found)`+(IPO_DENSE?DENSE_MSG:""); st.title=r.message||""; return; }
+  if(r.found){
+    st.textContent=`IPO offer $${ipoNum(r.offer)}${r.splitFactor&&r.splitFactor!==1?` ÷ ${ipoNum(r.splitFactor)} (splits) = $${ipoNum(r.adjustedOffer)}`:""} · ${r.ipoDate} · ${r.form||"424B"} (${/Financial/.test(r.source)?"FMP":"SEC EDGAR"}${/agrees/.test(r.source)?" + SEC":""})${/^single source \(FMP/.test(r.confidence||"")?" · unconfirmed":""}${IPO_DENSE?DENSE_MSG:""}`;
+    st.title=[r.note, r.confidence, r.filingUrl, (r.splits||[]).map(x=>`${x.date} ${x.ratio}`).join(", ")].filter(Boolean).join("\n"); return; }
+  st.style.color="#7a5a00";
+  st.textContent = (r.error? `IPO lookup failed - enter manually` : "offer price not found - enter manually");
+  st.title = r.message||"";
+}
+async function ipoFetch(){
+  if(!D||!ipoEligible()) { ipoUI(); return; }
+  const t=D.ticker;
+  if(!IPOS[t] || IPOS[t].error){
+    delete IPOS[t]; ipoUI();
+    try{ const res=await fetch(`/api/ipo?symbol=${encodeURIComponent(t)}`); const j=await res.json(); IPOS[t]= res.ok? j : {found:false, error:true, message:j.error||`HTTP ${res.status}`}; }
+    catch(e){ IPOS[t]={found:false, error:true, message:e.message}; }
+  }
+  if(D && D.ticker===t){ $("ipoManual").value = ipoManualVal() ?? ""; ipoUI(); draw(); }
+}
+function ipoChange(){ save(); if($("ipoOn").checked) ipoFetch(); else { ipoUI(); draw(); } }
 
 // ---------- TD Propulsion (Perl, "DeMark Indicators" 2008, ch. 6) ----------
 // User picks X, Y, Z with the mouse (Propulsion button). Up: X low, Y high, Z pullback low;
@@ -1018,6 +1097,8 @@ $("period").onchange=load;
 const TOL_DEF={"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05};
 $("tf").onchange=()=>{ const tf=$("tf").value; fillPeriods(tf, null); $("tol").value=TOL_DEF[tf]??0.25; load(); };
 for(const k of ["swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
+$("ipoOn").onchange=ipoChange; $("ipoStep").addEventListener("change",()=>{ save(); draw(); }); $("ipoBelow").onchange=()=>{ save(); draw(); };
+$("ipoManual").addEventListener("input",()=>{ const v=parseFloat($("ipoManual").value); try{ if(v>0) localStorage.setItem(ipoManualKey(), String(v)); else localStorage.removeItem(ipoManualKey()); }catch(_){} ipoUI(); draw(); });
 $("propBtn").onclick=()=>{ PICK = PICK ? null : {pts:[]}; propHint(); draw(); };
 $("propClear").onclick=()=>{ PROPS=[]; saveProps(); PICK=null; propHint(); draw(); };
 $("propR").onchange=()=>{ $("propFull").checked = $("propR").value==="bbg"; save(); draw(); };

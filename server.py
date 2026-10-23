@@ -665,6 +665,276 @@ def api_timeframes():
                                        "yahoo_max_days": v.get("yahoo_max")} for k, v in TIMEFRAMES.items()}})
 
 
+# ---------------------------------------------------------------------------
+# IPO offer price (for the "IPO grid" overlay).
+#   1. Financial Modeling Prep /stable/ipos-prospectus (SEC final-pricing filings, 424B4/424B1:
+#      pricePublicPerShare). The endpoint ignores symbol/limit/page and filters by FILING date,
+#      so we query a +-10-day window around the first-trade date (FMP profile.ipoDate) and match
+#      the symbol. Only final prospectus forms are used: the S-1/S-1/A rows carry range/placeholder
+#      prices (e.g. ABNB S-1/A 6.77, DASH S-1/A 8.73).
+#   2. SEC EDGAR fallback (free, no key, but SEC fair-access policy requires a User-Agent with a
+#      contact address: set SEC_USER_AGENT="Name admin@example.com"; disabled when unset). Finds the
+#      424B4/424B1 filed around the first-trade date via data.sec.gov/submissions and parses the
+#      cover-page price. Covers 1994+ only.
+#   Split adjustment: offer / prod(numerator/denominator) over FMP /stable/splits dated after the
+#   first-trade date. FMP daily bars are split-adjusted but dividend-unadjusted, as is the offer.
+IPO_TTL_OK = int(os.environ.get("IPO_TTL_OK", str(7 * 86400)))
+IPO_TTL_MISS = int(os.environ.get("IPO_TTL_MISS", "3600"))
+IPO_WINDOW_DAYS = 10
+IPO_FORMS = ("424B4", "424B1")
+IPO_FORMS_LOW = ("424B2", "424B3")  # unusual for IPOs (e.g. CMG 2006 used 424B2): only if no B4/B1 in the window
+IPO_SANITY = (0.2, 5.0)  # offer / first-day open must be within this band (rejects junk like PLTR 737)
+SEC_UA = os.environ.get("SEC_USER_AGENT", "").strip()
+_ipo_cache: dict[str, tuple[float, dict]] = {}
+_ipo_lock = threading.Lock()
+_sec_lock = threading.Lock()
+_sec_last = [0.0]
+_sec_tickers: dict[str, Any] = {"t": 0.0, "map": {}}
+
+
+def _ipo_eligible(t: str) -> bool:
+    return bool(t) and not (t.startswith("^") or t.endswith(("=F", "=X", "-USD", "-USDT")))
+
+
+def _split_factor(splits: list[dict], after) -> tuple[float, list[dict]]:
+    """Cumulative split factor (new shares per old share) for splits dated after `after`."""
+    f = 1.0
+    used = []
+    for x in sorted(splits, key=lambda r: r.get("date", "")):
+        try:
+            d = datetime.strptime(str(x["date"])[:10], "%Y-%m-%d").date()
+            n, dn = float(x["numerator"]), float(x["denominator"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if d > after and n > 0 and dn > 0:
+            f *= n / dn
+            used.append({"date": d.isoformat(), "ratio": f"{x['numerator']}:{x['denominator']}"})
+    return f, used
+
+
+def _fmp_ipo_date(sym: str):
+    """First-trade date: FMP profile.ipoDate; else first daily bar if the history is not truncated."""
+    from datetime import date
+    j, err = _fmp_get("profile", {"symbol": sym})
+    if err:
+        return None, err
+    if j and isinstance(j, list) and j[0].get("ipoDate"):
+        try:
+            return datetime.strptime(j[0]["ipoDate"][:10], "%Y-%m-%d").date(), None
+        except ValueError:
+            pass
+    rows, err = _fmp_get("historical-price-eod/light", {"symbol": sym, "from": "1970-01-01", "to": _today().isoformat()})
+    if err or not rows or len(rows) >= 4900:  # FMP caps at 5000 rows (newest first) -> first bar isn't the IPO
+        return None, err
+    return datetime.strptime(min(r["date"] for r in rows)[:10], "%Y-%m-%d").date(), None
+
+
+def _fmp_offer(sym: str, ipo_date):
+    from datetime import timedelta
+    rows, err = _fmp_get("ipos-prospectus", {"from": (ipo_date - timedelta(days=IPO_WINDOW_DAYS)).isoformat(),
+                                             "to": (ipo_date + timedelta(days=IPO_WINDOW_DAYS)).isoformat()})
+    if err:
+        return None, err
+    cand = [r for r in rows or [] if r.get("symbol") == sym and r.get("form") in IPO_FORMS
+            and isinstance(r.get("pricePublicPerShare"), (int, float)) and r["pricePublicPerShare"] > 0]
+    if not cand:
+        return None, None
+    def dist(r):
+        try:
+            return abs((datetime.strptime(r["filingDate"][:10], "%Y-%m-%d").date() - ipo_date).days)
+        except (KeyError, ValueError):
+            return 999
+    r = min(cand, key=dist)
+    return {"offer": float(r["pricePublicPerShare"]), "source": "Financial Modeling Prep (SEC " + r["form"] + ")",
+            "filingUrl": r.get("url"), "filingDate": r.get("filingDate"), "form": r["form"]}, None
+
+
+def _sec_get(url: str):
+    with _sec_lock:  # SEC fair access: <= 10 req/s; stay well below
+        wait = 0.2 - (time.time() - _sec_last[0])
+        if wait > 0:
+            time.sleep(wait)
+        _sec_last[0] = time.time()
+    return _http.get(url, headers={"User-Agent": SEC_UA, "Accept-Encoding": "gzip, deflate"}, timeout=FMP_TIMEOUT)
+
+
+_PRICE_PATS = [
+    r"PRICE\s+\$\s?([\d,]+(?:\.\d+)?)\s+(?:A|PER)\s+(?:SHARE|ADS|UNIT)",
+    r"initial public offering price (?:is|of|will be) \$\s?([\d,]+(?:\.\d+)?)\s+per\s+(?:share|ADS|unit)",
+    r"[Ii]nitial public offering price\s+\$\s?([\d,]+(?:\.\d+)?)",
+    r"[Pp]rice to [Pp]ublic.{0,400}?[Pp]er [Ss]hare\W{0,40}\$\s?([\d,]+(?:\.\d+)?)",
+]
+
+
+def _parse_offer_price(text: str) -> float | None:
+    """Cover-page offer price from a 424B4/424B1 (HTML or SGML text). First pattern that hits wins."""
+    import re
+    t = re.sub(r"<[^>]+>", " ", text)
+    t = re.sub(r"&nbsp;|&#160;|&#xa0;|&#x2014;|&#151;", " ", t)
+    t = re.sub(r"\s+", " ", t)[:250000]
+    for pat in _PRICE_PATS:
+        m = re.search(pat, t)
+        if m:
+            try:
+                v = float(m.group(1).replace(",", ""))
+            except ValueError:
+                continue
+            if v > 0:
+                return v
+    return None
+
+
+def _edgar_offer(sym: str, ipo_date):
+    from datetime import timedelta
+    if not SEC_UA:
+        return None, None
+    now = time.time()
+    if now - _sec_tickers["t"] > 86400 or not _sec_tickers["map"]:
+        r = _sec_get("https://www.sec.gov/files/company_tickers.json")
+        if r.status_code != 200:
+            return None, f"SEC HTTP {r.status_code}"
+        _sec_tickers["map"] = {v["ticker"]: v["cik_str"] for v in r.json().values()}
+        _sec_tickers["t"] = now
+    cik = _sec_tickers["map"].get(sym)
+    if not cik:
+        return None, None
+    cik10 = str(cik).zfill(10)
+    r = _sec_get(f"https://data.sec.gov/submissions/CIK{cik10}.json")
+    if r.status_code != 200:
+        return None, f"SEC HTTP {r.status_code}"
+    j = r.json()
+    lo, hi = (ipo_date - timedelta(days=3)).isoformat(), (ipo_date + timedelta(days=7)).isoformat()
+    blocks = [j["filings"]["recent"]]
+    for f in j["filings"].get("files", []):
+        if f.get("filingFrom", "") <= hi and f.get("filingTo", "9999") >= lo:
+            rr = _sec_get("https://data.sec.gov/submissions/" + f["name"])
+            if rr.status_code == 200:
+                blocks.append(rr.json())
+    best = None
+    for b in blocks:
+        for i, form in enumerate(b["form"]):
+            d = b["filingDate"][i]
+            if (form in IPO_FORMS or form in IPO_FORMS_LOW) and lo <= d <= hi:
+                dist = abs((datetime.strptime(d, "%Y-%m-%d").date() - ipo_date).days)
+                rank = (0 if form in IPO_FORMS else 1, dist)
+                if best is None or rank < best[0]:
+                    best = (rank, form, d, b["accessionNumber"][i], b["primaryDocument"][i])
+    if not best:
+        return None, None
+    _, form, d, acc, doc = best
+    nodash = acc.replace("-", "")
+    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{nodash}/{doc}" if doc else \
+          f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}.txt"
+    rd = _sec_get(url)
+    if rd.status_code != 200:
+        return None, f"SEC HTTP {rd.status_code}"
+    price = _parse_offer_price(rd.text[:600000])
+    if price is None:
+        return None, None
+    return {"offer": price, "source": f"SEC EDGAR {form} (parsed cover page)", "filingUrl": url,
+            "filingDate": d, "form": form}, None
+
+
+def _first_day_open(sym: str, ipo_date):
+    """First split-adjusted daily bar on/after the first-trade date (for the offer sanity check)."""
+    from datetime import timedelta
+    rows, err = _fmp_get("historical-price-eod/full", {"symbol": sym, "from": ipo_date.isoformat(),
+                                                       "to": (ipo_date + timedelta(days=7)).isoformat()})
+    rows = [r for r in rows or [] if r.get("date") and (r.get("open") or r.get("close"))]
+    if err or not rows:
+        return None
+    r = min(rows, key=lambda x: x["date"])
+    return float(r.get("open") or r["close"])
+
+
+def _ipo_lookup(t: str) -> dict:
+    out: dict[str, Any] = {"symbol": t, "found": False, "eligible": _ipo_eligible(t), "offer": None, "ipoDate": None,
+                           "splitFactor": None, "adjustedOffer": None, "source": None, "filingUrl": None}
+    if not out["eligible"]:
+        out["message"] = "IPO grid is not available for futures, indexes, FX or crypto"
+        return out
+    if not _fmp_key():
+        out["message"] = "IPO lookup needs FMP_API_KEY on the server"
+        out["error"] = True
+        return out
+    sym = _fmp_symbol(t) or t
+    ipo_date, err = _fmp_ipo_date(sym)
+    if err:
+        out["message"], out["error"] = f"IPO lookup failed: {err}", True
+        return out
+    if not ipo_date:
+        out["message"] = "first-trade date unknown"
+        return out
+    out["ipoDate"] = ipo_date.isoformat()
+    hit, err = _fmp_offer(sym, ipo_date)
+    try:
+        ed, err2 = _edgar_offer(t, ipo_date)
+    except Exception as e:  # noqa: BLE001
+        ed, err2 = None, f"EDGAR lookup failed: {type(e).__name__}"
+    if hit and ed:
+        if abs(ed["offer"] - hit["offer"]) > 0.005:
+            # FMP's pricePublicPerShare is occasionally wrong (META: 37.58 = proceeds/share, not the 38.00 price):
+            # the filing itself wins, and the disagreement is reported.
+            out["fmpOffer"] = hit["offer"]
+            ed["note"] = f"FMP reported {hit['offer']:g}; using the SEC filing cover page"
+            hit = ed
+        else:
+            hit["source"] += " + SEC EDGAR cover page agrees"
+        out["confidence"] = "confirmed (FMP and SEC filing agree)" if "agrees" in hit["source"] else "SEC filing (FMP disagreed)"
+    elif not hit:
+        hit = ed
+        if hit:
+            out["confidence"] = "single source (SEC filing)"
+    else:
+        out["confidence"] = "single source (FMP only, not cross-checked)" if SEC_UA else \
+                            "single source (FMP only; set SEC_USER_AGENT to cross-check against the SEC filing)"
+    if not hit:
+        out["message"] = "offer price not found"
+        if err or err2:
+            out["error"] = True  # a source errored: do not cache as a definite miss
+            out["message"] = f"offer price not found ({err or err2})"
+        return out
+    # Sanity: the unadjusted offer must be plausible against the first-day price (needs the split factor
+    # to compare on one basis, so run it on the adjusted numbers below).
+    sp, err = _fmp_get("splits", {"symbol": sym})
+    if err:
+        out["message"], out["error"] = f"split lookup failed: {err}", True
+        return out
+    f, used = _split_factor(sp or [], ipo_date)
+    adj = hit["offer"] / f
+    fd = _first_day_open(sym, ipo_date)
+    if fd:
+        out["firstDayOpen"] = round(fd, 4)
+        ratio = adj / fd
+        if not (IPO_SANITY[0] <= ratio <= IPO_SANITY[1]):
+            out.update({"message": f"offer price not found (candidate {hit['offer']:g} from {hit['source']} rejected: "
+                                   f"adjusted {adj:.4g} vs first-day open {fd:.4g})", "rejected": hit["offer"]})
+            return out
+    out.update(hit)
+    out.update({"found": True, "splitFactor": f, "splits": used, "adjustedOffer": round(hit["offer"] / f, 4)})
+    return out
+
+
+@app.get("/api/ipo")
+def api_ipo():
+    raw = (request.args.get("symbol") or request.args.get("ticker") or "").strip()
+    t = _normalize_ticker(raw)
+    if not t or len(t) > 24 or not all(c.isalnum() or c in ".-^=" for c in t):
+        return jsonify({"error": "Invalid ticker symbol"}), 400
+    now = time.time()
+    with _ipo_lock:
+        hit = _ipo_cache.get(t)
+        if hit and now - hit[0] < (IPO_TTL_OK if hit[1]["found"] else IPO_TTL_MISS):
+            return jsonify(hit[1])
+    out = _ipo_lookup(t)
+    if not out.get("error"):
+        with _ipo_lock:
+            if len(_ipo_cache) > 2000:
+                _ipo_cache.pop(min(_ipo_cache, key=lambda k: _ipo_cache[k][0]), None)
+            _ipo_cache[t] = (now, out)
+    return jsonify(out)
+
+
 @app.get("/healthz")
 def healthz():
     return jsonify({"ok": True})
