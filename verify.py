@@ -147,6 +147,22 @@ def check_ipo_grid() -> bool:
             good = [round(x, 6) for x in got] == exp
             ok &= good
             print(f"  {'PASS' if good else 'FAIL'}  ipoLevels: {name}: {got} (exp {exp})")
+        js = m.group(0) + "\nconsole.log(JSON.stringify(ipoLevels(35,0.5,0,200,true,5000)));"
+        got = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+        good = got == [17.5, 35, 52.5, 70, 87.5, 105, 122.5, 140, 157.5, 175, 192.5]
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  ipoLevels: GC base 35, step 0.5x -> 17.5, 35, 52.5, 70 ... (only > 0): {got}")
+        mb = re.search(r"^const FX_CCY=.*?$\nfunction ipoIsBase\(\).*?$", src, re.M)
+        if not mb:
+            print("  FAIL  ipoIsBase() not found in index.html")
+            ok = False
+        else:
+            for tk, exp in [("GC=F", True), ("ES=F", True), ("^GSPC", True), ("EURUSD=X", True), ("EURUSD", True), ("USDJPY", True), ("BTC-USD", True),
+                            ("AAPL", False), ("ABNB", False), ("META", False), ("EURO", False)]:
+                js = f"const D={{ticker:'{tk}'}};" + mb.group(0) + "\nconsole.log(ipoIsBase());"
+                got = subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.strip() == "true"
+                ok &= got == exp
+                print(f"  {'PASS' if got == exp else 'FAIL'}  base-price (manual only) ticker: {tk}: {got} (exp {exp})")
         js = m.group(0) + "\nconst a=ipoLevels(10,0.5,0,100000,true,5000);console.log(a.length+' '+a[a.length-1]);"
         n, last = subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.split()
         good = (int(n), float(last)) == (5000, 25000.0)  # no upper limit other than the 5000-line safety cap
@@ -159,6 +175,10 @@ def check_ipo_grid() -> bool:
         print(f"  SKIP  server-side IPO checks (cannot import server.py: {type(e).__name__})")
         return ok
     from datetime import date
+    for tk, exp in [("GC=F", False), ("ES=F", False), ("^GSPC", False), ("EURUSD=X", False), ("EURUSD", False), ("BTC-USD", False), ("AAPL", True), ("META", True)]:
+        good = S._ipo_eligible(tk) == exp
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  server _ipo_eligible({tk}) = {S._ipo_eligible(tk)} (exp {exp})")
     nvda = [{"date": d, "numerator": n, "denominator": dn} for d, n, dn in
             [("2000-06-27", 2, 1), ("2001-09-12", 2, 1), ("2006-04-07", 2, 1), ("2007-09-11", 3, 2), ("2021-07-20", 4, 1), ("2024-06-10", 10, 1)]]
     f, _ = S._split_factor(nvda, date(1999, 1, 22))

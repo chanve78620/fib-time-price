@@ -692,7 +692,12 @@ _sec_last = [0.0]
 _sec_tickers: dict[str, Any] = {"t": 0.0, "map": {}}
 
 
+_FX_CCY = set("USD EUR GBP JPY CHF AUD NZD CAD CNY CNH MXN SEK NOK DKK PLN SGD HKD ZAR TRY INR BRL KRW".split())
+
+
 def _ipo_eligible(t: str) -> bool:
+    if len(t) == 6 and t[:3] != t[3:] and t[:3] in _FX_CCY and t[3:] in _FX_CCY:  # bare FX pair, e.g. EURUSD
+        return False
     return bool(t) and not (t.startswith("^") or t.endswith(("=F", "=X", "-USD", "-USDT")))
 
 

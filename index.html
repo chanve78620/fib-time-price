@@ -803,7 +803,7 @@ async function load(){
     D.future=genFuture(D.dates[D.n-1]);
     layout(); resetView(); recompute();
     setStatus(`${j.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones · ${j.source==="fmp"?"FMP":"Yahoo"}`);
-    ipoUI(); if($("ipoOn").checked) ipoFetch();
+    $("ipoManual").value = ipoManualVal() ?? ""; ipoUI(); if($("ipoOn").checked) ipoFetch();
     save(); const u=new URL(location.href); u.searchParams.set("t",raw.toUpperCase()); u.searchParams.set("tf",D.tf); history.replaceState(null,"",u);
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
@@ -835,18 +835,28 @@ function ipoLevels(ipo, mult, lo, hi, below, cap){
   return out;
 }
 function ipoMult(){ const v=parseFloat($("ipoStep").value); return v>0? v : 0.5; }
-function ipoEligible(){ return !!D && !/^\^|=F$|=X$|-USDT?$/.test(D.ticker); }
+// futures / indexes / FX / crypto have no IPO: the grid is a "base price" grid there, typed in by hand
+const FX_CCY="USD EUR GBP JPY CHF AUD NZD CAD CNY CNH MXN SEK NOK DKK PLN SGD HKD ZAR TRY INR BRL KRW".split(" ");
+function ipoIsBase(){ return !!D && (/^\^|=F$|=X$|-USDT?$/.test(D.ticker) || (D.ticker.length===6 && D.ticker.slice(0,3)!==D.ticker.slice(3) && FX_CCY.includes(D.ticker.slice(0,3)) && FX_CCY.includes(D.ticker.slice(3)))); } // incl. bare FX pairs like EURUSD
+function ipoEligible(){ return !!D && !ipoIsBase(); }
 function ipoManualKey(){ return D? `ftpIpo:${D.ticker}` : ""; }
 function ipoManualVal(){ try{ const v=parseFloat(localStorage.getItem(ipoManualKey())); return v>0? v : null; }catch(_){ return null; } }
 function ipoRec(){ return D? IPOS[D.ticker] : null; }
 function ipoNoOffer(){ const r=ipoRec(); return !!(D && $("ipoOn").checked && ipoEligible() && r && !r.found); }
-function ipoPrice(){ if(!D||!$("ipoOn").checked||!ipoEligible()) return null; const r=ipoRec(); if(!r) return null; return r.found? r.adjustedOffer : ipoManualVal(); }
+function ipoPrice(){ if(!D||!$("ipoOn").checked) return null; if(ipoIsBase()) return ipoManualVal(); /* typed as shown: no split adjustment */ const r=ipoRec(); if(!r) return null; return r.found? r.adjustedOffer : ipoManualVal(); }
 function ipoMissing(){ return ipoNoOffer() && ipoManualVal()==null; }
 function ipoNum(x){ return String(+Number(x).toFixed(4)); }
 function ipoUI(){
   const on=$("ipoOn"), st=$("ipoStatus"), man=$("ipoManual"); const ok=ipoEligible();
-  on.disabled=!D||!ok; $("ipoOnLbl").style.color = on.disabled? "#888":"";
-  if(D && !ok){ st.textContent="IPO grid n/a (futures, index, FX, crypto)"; man.style.display="none"; st.title=""; return; }
+  on.disabled=!D; $("ipoOnLbl").style.color = on.disabled? "#888":"";
+  man.placeholder = ipoIsBase()? "Base $" : "IPO $";
+  man.title = ipoIsBase()? "Base price for the grid (futures, index, FX, crypto): lines every Step× this price, e.g. GC base 35 → 35, 52.5, 70 …. Enter it on the price scale shown on the chart (not split-adjusted). Remembered per ticker." : "No IPO offer price was found: type the split-adjusted IPO price (remembered per ticker)";
+  if(ipoIsBase()){
+    man.style.display=""; st.title=""; st.style.color="#444";
+    const m=ipoManualVal();
+    st.textContent = !on.checked? "" : (m? `base price $${ipoNum(m)} (manual)${IPO_DENSE?DENSE_MSG:""}` : "enter a base price");
+    return;
+  }
   const r=ipoRec(); st.title=""; st.style.color="#444";
   man.style.display = ipoNoOffer()? "" : "none";
   if(!on.checked || !D){ st.textContent=""; return; }
@@ -860,7 +870,8 @@ function ipoUI(){
   st.title = r.message||"";
 }
 async function ipoFetch(){
-  if(!D||!ipoEligible()) { ipoUI(); return; }
+  if(!D) return;
+  if(ipoIsBase()) { $("ipoManual").value = ipoManualVal() ?? ""; ipoUI(); draw(); return; }
   const t=D.ticker;
   if(!IPOS[t] || IPOS[t].error){
     delete IPOS[t]; ipoUI();
@@ -1098,7 +1109,7 @@ const TOL_DEF={"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05};
 $("tf").onchange=()=>{ const tf=$("tf").value; fillPeriods(tf, null); $("tol").value=TOL_DEF[tf]??0.25; load(); };
 for(const k of ["swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
 $("ipoOn").onchange=ipoChange; $("ipoStep").addEventListener("change",()=>{ save(); draw(); }); $("ipoBelow").onchange=()=>{ save(); draw(); };
-$("ipoManual").addEventListener("input",()=>{ const v=parseFloat($("ipoManual").value); try{ if(v>0) localStorage.setItem(ipoManualKey(), String(v)); else localStorage.removeItem(ipoManualKey()); }catch(_){} ipoUI(); draw(); });
+$("ipoManual").addEventListener("input",()=>{ const v=parseFloat($("ipoManual").value); try{ if(v>0) localStorage.setItem(ipoManualKey(), String(v)); else localStorage.removeItem(ipoManualKey()); }catch(_){} if(ipoIsBase() && v>0 && !$("ipoOn").checked){ $("ipoOn").checked=true; save(); } ipoUI(); draw(); });
 $("propBtn").onclick=()=>{ PICK = PICK ? null : {pts:[]}; propHint(); draw(); };
 $("propClear").onclick=()=>{ PROPS=[]; saveProps(); PICK=null; propHint(); draw(); };
 $("propR").onchange=()=>{ $("propFull").checked = $("propR").value==="bbg"; save(); draw(); };
