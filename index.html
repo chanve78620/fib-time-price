@@ -107,7 +107,12 @@
     <select id="propR" title="TD Propulsion ratios"><option value="demark">23.6/47.2%</option><option value="bbg">25/50% (Bloomberg)</option></select>
     <select id="propBasis" title="TD Propulsion price basis: High/Low (DeMark: X = low of the bottom bar, Y = high of the top bar, Z = low of the pullback) or the closes of those bars"><option value="hl">High/Low</option><option value="close">Close</option></select>
     <label title="Show the 'full propulsion' level Z ± 1.0·R (default on in Bloomberg mode)"><input type="checkbox" id="propFull">Full</label>
-    <button id="propAuto" title="Auto-pick X/Y/Z like Bloomberg: X = the later of the visible window's absolute low/high, Y = the opposite extreme after it, Z = the deepest pullback after Y">Auto XYZ</button>
+    <select id="propAutoMode" title="How Auto XYZ picks the pivots. DeMark: Z = the most recent TD Point (level set at right), Y = highest high since the last lower low left of Z, X = lowest low since the last higher high left of Y (DeMark's TD Retracement 'critical price' rule, New Science ch.2). Window: absolute extremes of the visible window."><option value="demark">Auto: DeMark pivots</option><option value="window">Auto: window extremes</option></select>
+    <button id="propAuto" title="Place X/Y/Z automatically as of the last visible bar. Each handle can then be dragged.">Auto XYZ</button>
+    <select id="propBAnch" title="Which bar's low/high anchors the B (exhaustion) level. Bloomberg's GDXJ 30m B = low of the bar BEFORE the Z bar + 0.5R (inferred from one chart; default on in Bloomberg mode)"><option value="z">B from Z</option><option value="prior">B from bar before Z</option></select>
+    <label title="Overlay DeMark TD Points (pivot highs/lows) on the chart; number = level (K bars lower/higher on each side)"><input type="checkbox" id="tdPts">TD Pts</label>
+    <select id="tdPtsLvl" title="Minimum TD Point level to show / use for Auto (1 = 1 bar each side, 2 = 2, 3 = 3)"><option value="1">L1+</option><option value="2">L2+</option><option value="3">L3+</option></select>
+    <label title="'True' TD Points: the pivot must also beat the close K+1 bars before it (New Science p.14)"><input type="checkbox" id="tdTrue">true</label>
     <button id="propClear" title="Remove all propulsion drawings for this ticker/timeframe">Clear</button>
     <span id="propHint" style="color:#7a5a00;font-weight:bold"></span>
   </div>
@@ -808,7 +813,7 @@ async function load(){
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
 
-const KEYS=["ipoOn","ipoStep","ipoBelow","propR","propBasis","propFull","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
+const KEYS=["propAutoMode","propBAnch","tdPts","tdPtsLvl","tdTrue","ipoOn","ipoStep","ipoBelow","propR","propBasis","propFull","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
 function save(){ const o={v:3}; for(const k of KEYS){ const el=$(k); o[k]= el.type==="checkbox"? el.checked : el.value; } try{ localStorage.setItem("ftp2",JSON.stringify(o)); }catch(_){} }
 function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{}"); }catch(_){}
   if(o.v!==3){ delete o.dtpMin; delete o.band; delete o.maxLv; } // DTP defaults changed (fitted model)
@@ -891,7 +896,7 @@ function ipoChange(){ save(); if($("ipoOn").checked) ipoFetch(); else { ipoUI();
 // Breakout of A is judged with DeMark's TD Line breakout qualifiers (Perl p.123 applies "one of the
 // three TD Line qualification criteria" to Propulsion). See propBreakQual() for the exact rules.
 function propRatios(){ return ($("propR") && $("propR").value==="bbg") ? [0.25,0.5] : [0.236,0.472]; }
-function propLevels(X,Y,Z,side,r1,r2){ const R = side==="up" ? Y-X : X-Y; return side==="up" ? {R, A:Z+r1*R, B:Z+r2*R, F:Z+R} : {R, A:Z-r1*R, B:Z-r2*R, F:Z-R}; }
+function propLevels(X,Y,Z,side,r1,r2,Zb){ const R = side==="up" ? Y-X : X-Y; if(Zb==null) Zb=Z; return side==="up" ? {R, A:Z+r1*R, B:Zb+r2*R, F:Z+R} : {R, A:Z-r1*R, B:Zb-r2*R, F:Z-R}; }
 function propBasis(){ return ($("propBasis") && $("propBasis").value==="close") ? "close" : "hl"; }
 function propFullOn(){ return !!($("propFull") && $("propFull").checked); }
 // DeMark TD Line breakout qualifiers for a break of level `lvl` on bar i (any of Q1–Q3 qualifies).
@@ -928,9 +933,11 @@ function propEval(pr){
   // price basis: High/Low (DeMark default) or the closes of the X/Y/Z bars; the same basis is used
   // for the cancel (X), break (A), target (B) and full (F) tests: intrabar extremes vs closes.
   const X= cl? D.c[ix] : up? D.l[ix]:D.h[ix], Y= cl? D.c[iy] : up? D.h[iy]:D.l[iy], Z= cl? D.c[iz] : up? D.l[iz]:D.h[iz];
-  const {R,A,B,F}=propLevels(X,Y,Z,pr.side,r1,r2);
+  const bPrior = $("propBAnch") && $("propBAnch").value==="prior" && iz>0; // B anchored on the bar before Z
+  const Zb = bPrior ? (cl? D.c[iz-1] : up? D.l[iz-1]:D.h[iz-1]) : Z;
+  const {R,A,B,F}=propLevels(X,Y,Z,pr.side,r1,r2,Zb);
   const hi=(i)=> cl? D.c[i]:D.h[i], lo=(i)=> cl? D.c[i]:D.l[i];
-  const o={ix,iy,iz,X,Y,Z,R,A,B,F,up,r1,r2,basis,crosses:[]};
+  const o={ix,iy,iz,X,Y,Z,Zb,bPrior,R,A,B,F,up,r1,r2,basis,crosses:[]};
   o.qZ = up ? D.c[iy]-Z >= r1*R : Z-D.c[iy] >= r1*R;
   const prior=[...P].reverse().find(p=>p.i<ix && p.kind===(up?"high":"low") && !p.tent);
   o.priorDate = prior? prior.date : null;
@@ -968,6 +975,7 @@ function propStatus(o, html){
   for(const x of o.crosses) s+=` · unqualified cross ${dtLabel(D.dates[x.i])}`;
   if(o.trigI!=null){ s+=` · qualified break ${dtLabel(D.dates[o.trigI])} [${o.bq.slice(0,3).map((b,k)=>b?PROP_QN[k]:null).filter(Boolean).join(", ")}${o.bq[3]?"; "+PROP_QN[3]:""}]`;
     if(o.post){ const n=["next open back below A (TD Critical Qualifier)","next open < break close & close back below A","next bar failed to exceed break high"].map(t=>o.up?t:t.replace("below","above").replace("exceed break high","undercut break low")); const f=o.post.map((b,k)=>b?n[k]:null).filter(Boolean); if(f.length) s+=` · caution: ${f.join("; ")}`; } }
+  if(o.bPrior) s+=` · B from bar before Z`;
   if(o.targI!=null) s+=` · target B hit ${dtLabel(D.dates[o.targI])}`;
   if(o.fullI!=null && propFullOn()) s+=` · Prop Full hit ${dtLabel(D.dates[o.fullI])}`;
   if(o.failI!=null) s+=` · X violated after break ${dtLabel(D.dates[o.failI])}`;
@@ -977,7 +985,9 @@ function propStatus(o, html){
   return s;
 }
 function propPrices(){ if(!D) return []; const out=[]; for(const pr of PROPS){ const o=propEval(pr); if(o){ out.push({price:o.A},{price:o.B}); if(propFullOn()) out.push({price:o.F}); } } return out; }
+let HANDLES=[], HD=null; // draggable X/Y/Z handles; HD = active drag {k,w}
 function drawProps(labs){
+  drawTDPts(); HANDLES=[];
   const B=bw(); let row=0;
   const evals=PROPS.map(pr=>propEval(pr));
   evals.forEach((o,k)=>{ if(!o) return;
@@ -987,6 +997,8 @@ function drawProps(labs){
     ctx.font="bold 12px Tahoma, Arial"; ctx.fillStyle=col; ctx.textAlign="center";
     const lab=(t,i,p,below)=>{ ctx.textBaseline=below?"top":"bottom"; ctx.fillText(t, px(i), py(p)+(below?4:-4)); };
     lab("X",o.ix,o.X,o.up); lab("Y",o.iy,o.Y,!o.up); lab("Z",o.iz,o.Z,o.up);
+    for(const [w,i,p] of [["x",o.ix,o.X],["y",o.iy,o.Y],["z",o.iz,o.Z]]){ const cx=px(i), cy=py(p); HANDLES.push({k,w,cx,cy});
+      ctx.save(); ctx.fillStyle="rgba(255,255,255,0.7)"; ctx.strokeStyle=col; ctx.lineWidth=HD&&HD.k===k&&HD.w===w?3:1.6; ctx.beginPath(); ctx.arc(cx,cy,6,0,7); ctx.fill(); ctx.stroke(); ctx.restore(); }
     const x0=Math.max(2,px(o.iz)-B/2);
     const q = o.trigI!=null, cancelled = o.cancelI!=null;
     // line ends: A ends at the qualified breakout bar; B at the bar that touches it (after a
@@ -1024,7 +1036,49 @@ function drawProps(labs){
     const t=`Propulsion: pick ${["X","Y","Z"][PICK.pts.length]} (click a bar or pivot label · Esc cancels)`; const tw=ctx.measureText(t).width;
     ctx.fillStyle="#fffbe0"; ctx.fillRect(L.x1/2-tw/2-6, L.top+2, tw+12, 18); ctx.fillStyle="#7a5a00"; ctx.fillText(t, L.x1/2, L.top+4); ctx.restore(); }
 }
-// Auto anchors (Bloomberg-style, inferred from the user's GDXJ 30m chart): over the visible window,
+// ---------- DeMark TD Points (levels 1..6) ----------
+// TD Point high of level K: strictly greater than the highs of the K preceding and K following bars
+// (low: strictly less). Equal highs/lows: refer to the bar before the first of the equal bars and
+// select the most recent of them (DeMark & DeMark, "High-quality entries", Futures 1997).
+// "true" variant: must also beat the close K+1 bars earlier (New Science p.14, Aspen help).
+// Level can only be established once K bars follow it; the last bar is never a TD Point.
+function tdPoints(n, cl, tru){ n=Math.min(n||D.n, D.n);
+  const Hh=(i)=> cl? D.c[i]:D.h[i], Ll=(i)=> cl? D.c[i]:D.l[i];
+  const hi=new Array(n).fill(0), lo=new Array(n).fill(0), MAXK=6;
+  const lvl=(i,get,isHigh)=>{ const v=get(i); let s=i; while(s>0 && get(s-1)===v) s--; if(i+1<n && get(i+1)===v) return 0;
+    let k=0; for(let K=1;K<=MAXK;K++){ if(s-K<0||i+K>=n) break; const a=get(s-K), b=get(i+K);
+      if(isHigh ? !(a<v && b<v) : !(a>v && b>v)) break;
+      if(tru){ const c=D.c[s-K-1]; if(c!=null && (isHigh ? !(v>c) : !(v<c))) break; }
+      k=K; } return k; };
+  for(let i=1;i<n-1;i++){ hi[i]=lvl(i,Hh,true); lo[i]=lvl(i,Ll,false); }
+  return {hi,lo}; }
+function tdPtsLevel(){ return +($("tdPtsLvl")?$("tdPtsLvl").value:1)||1; }
+function drawTDPts(){ if(!D || !$("tdPts") || !$("tdPts").checked) return;
+  const lv=tdPtsLevel(), cl=propBasis()==="close", {hi,lo}=tdPoints(D.n,cl,$("tdTrue").checked);
+  const a=Math.max(0,Math.floor(view.right-view.count)), b=Math.min(D.n-1,Math.ceil(view.right));
+  ctx.save(); ctx.font="bold 10px Tahoma, Arial"; ctx.textAlign="center";
+  for(let i=a;i<=b;i++){ const x=xOf(i); if(x<L.x0||x>L.x1) continue;
+    if(hi[i]>=lv){ const y=yOf(cl?D.c[i]:D.h[i]); if(y>L.top&&y<L.mainB){ ctx.fillStyle="#c0392b"; ctx.beginPath(); ctx.moveTo(x,y-3); ctx.lineTo(x-3.5,y-9); ctx.lineTo(x+3.5,y-9); ctx.closePath(); ctx.fill(); ctx.textBaseline="bottom"; ctx.fillText(hi[i]>=6?"6+":hi[i], x, y-9); } }
+    if(lo[i]>=lv){ const y=yOf(cl?D.c[i]:D.l[i]); if(y>L.top&&y<L.mainB){ ctx.fillStyle="#1e8449"; ctx.beginPath(); ctx.moveTo(x,y+3); ctx.lineTo(x-3.5,y+9); ctx.lineTo(x+3.5,y+9); ctx.closePath(); ctx.fill(); ctx.textBaseline="top"; ctx.fillText(lo[i]>=6?"6+":lo[i], x, y+9); } } }
+  ctx.restore(); }
+// Auto (DeMark): as of the last visible bar `last`. Z = the most recent confirmed TD Point of level >= lvl
+// (a low gives an up structure, a high a down structure). Then, mirroring DeMark's TD Retracement point
+// selection (New Science ch.2: "extend a line left from the recent low to the last time a lower low was
+// recorded; the highest price between is the critical price"): Y = highest high between that bar and Z;
+// X = lowest low between Y and the last bar to the left of Y with a higher high. Mirror for down.
+// Reproduces Bloomberg's GDXJ 30m X/Y/Z exactly (docs/td_propulsion.md). Not documented by DeMark/Bloomberg
+// as the Propulsion rule: inferred.
+function propAutoDeMark(last, lvl, cl, tru){ if(!D) return null; last=Math.min(D.n-1, last==null? D.n-1 : last);
+  const {hi,lo}=tdPoints(last+1,cl,tru); const Hh=(i)=> cl? D.c[i]:D.h[i], Ll=(i)=> cl? D.c[i]:D.l[i];
+  let pl=-1, ph=-1; for(let i=last-1;i>=1;i--){ if(pl<0 && lo[i]>=lvl) pl=i; if(ph<0 && hi[i]>=lvl) ph=i; if(pl>=0&&ph>=0) break; }
+  if(pl<0 && ph<0) return null; const up = pl>ph, z = up? pl : ph;
+  const argm=(a,b,f,better)=>{ let k=-1; for(let i=a;i<b;i++){ if(k<0 || better(f(i),f(k))) k=i; } return k; };
+  let j=-1; for(let i=z-1;i>=0;i--){ if(up ? Ll(i)<Ll(z) : Hh(i)>Hh(z)){ j=i; break; } }
+  const y = up? argm(j+1,z,Hh,(a,b)=>a>b) : argm(j+1,z,Ll,(a,b)=>a<b); if(y<0) return null;
+  let k=-1; for(let i=y-1;i>=0;i--){ if(up ? Hh(i)>Hh(y) : Ll(i)<Ll(y)){ k=i; break; } }
+  const x = up? argm(k+1,y,Ll,(a,b)=>a<b) : argm(k+1,y,Hh,(a,b)=>a>b); if(x<0) return null;
+  return {side:up?"up":"down", x:D.dates[x], y:D.dates[y], z:D.dates[z]}; }
+// Auto anchors (window mode): over the visible window,
 // X = whichever absolute extreme (low or high) came later; if it is the low the structure is up:
 // Y = the highest high after X, Z = the lowest low after Y (mirror for down). Selected basis applies.
 function propAutoXYZ(){ if(!D) return null; const cl=propBasis()==="close";
@@ -1070,19 +1124,28 @@ cv.addEventListener("wheel",(e)=>{ e.preventDefault(); const r=cv.getBoundingCli
   zoomAt(e.deltaY>0?1.12:1/1.12, x); },{passive:false});
 const ptrs=new Map(); let drag=null, pinch=null;
 cv.addEventListener("pointerdown",(e)=>{ cv.setPointerCapture(e.pointerId); const r=cv.getBoundingClientRect(); ptrs.set(e.pointerId,{x:e.clientX-r.left,y:e.clientY-r.top});
+  if(ptrs.size===1 && !PICK){ const p0=[...ptrs.values()][0]; const hh=HANDLES.find(h=>Math.hypot(h.cx-p0.x,h.cy-p0.y)<=9);
+    if(hh){ HD={k:hh.k,w:hh.w}; drag=null; clickAt=null; cv.style.cursor="grabbing"; draw(); return; } }
   if(ptrs.size===1){ const p=[...ptrs.values()][0]; clickAt={x:p.x,y:p.y,t:Date.now()}; drag={x:p.x,y:p.y,right:view.right,yShift:view.yShift,yZoom:view.yZoom,axis:p.x>L.x1}; }
   else if(ptrs.size===2){ const [a,b]=[...ptrs.values()]; pinch={d:Math.abs(a.x-b.x)||1,count:view.count,cx:(a.x+b.x)/2}; drag=null; } });
 cv.addEventListener("pointermove",(e)=>{ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top;
   if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId,{x,y});
+  if(HD){ propDragTo(x,y); return; }
   if(pinch && ptrs.size===2){ const [a,b]=[...ptrs.values()]; const d=Math.abs(a.x-b.x)||1; const target=pinch.count*pinch.d/d; zoomAt(target/view.count, pinch.cx); return; }
   if(drag && ptrs.size===1){
     if(drag.axis){ view.yZoom=Math.max(0.2,drag.yZoom*Math.exp((drag.y-y)/150)); }
     else { view.right = drag.right - (x-drag.x)/bw(); const dy=y-drag.y; view.yShift = drag.yShift + dy/(L.mainB-L.top)*(Y.hi-Y.lo); clampView(); }
     hover=null; draw(); return; }
-  if(!D) return; cv.style.cursor = PIVR.some(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1) ? "pointer" : ""; hover={x,y,i:iOfX(x)}; draw(); showTip(x,y);
+  if(!D) return; cv.style.cursor = (!PICK && HANDLES.some(h=>Math.hypot(h.cx-x,h.cy-y)<=9)) ? "grab" : PIVR.some(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1) ? "pointer" : ""; hover={x,y,i:iOfX(x)}; draw(); showTip(x,y);
 });
 let clickAt=null;
+function propDragTo(x,y){ // drag one pivot handle: snap to the nearest bar (x) and its high/low/close (role + basis)
+  const pr=PROPS[HD.k]; if(!pr||!D) return; const ix=D.dates.indexOf(pr.x), iy=D.dates.indexOf(pr.y), iz=D.dates.indexOf(pr.z);
+  let i=Math.max(0,Math.min(D.n-1,iOfX(x)));
+  if(HD.w==="x") i=Math.min(i,iy-1); else if(HD.w==="y") i=Math.max(ix+1,Math.min(i,iz-1)); else i=Math.max(i,iy+1);
+  if(i<0||i>=D.n) return; pr[HD.w]=D.dates[i]; draw(); }
 function endPtr(e){
+  if(HD){ HD=null; saveProps(); cv.style.cursor=""; clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch=null; if(ptrs.size===0) drag=null; draw(); return; }
   if(e.type==="pointerup" && clickAt && ptrs.size===1 && D){ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top;
     if(Math.hypot(x-clickAt.x,y-clickAt.y)<5 && Date.now()-clickAt.t<600){ if(propClick(x,y)){ clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size===0) drag=null; return; }
       const h=PIVR.find(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
@@ -1112,10 +1175,13 @@ $("ipoOn").onchange=ipoChange; $("ipoStep").addEventListener("change",()=>{ save
 $("ipoManual").addEventListener("input",()=>{ const v=parseFloat($("ipoManual").value); try{ if(v>0) localStorage.setItem(ipoManualKey(), String(v)); else localStorage.removeItem(ipoManualKey()); }catch(_){} if(ipoIsBase() && v>0 && !$("ipoOn").checked){ $("ipoOn").checked=true; save(); } ipoUI(); draw(); });
 $("propBtn").onclick=()=>{ PICK = PICK ? null : {pts:[]}; propHint(); draw(); };
 $("propClear").onclick=()=>{ PROPS=[]; saveProps(); PICK=null; propHint(); draw(); };
-$("propR").onchange=()=>{ $("propFull").checked = $("propR").value==="bbg"; save(); draw(); };
+$("propR").onchange=()=>{ const b=$("propR").value==="bbg"; $("propFull").checked=b; $("propBAnch").value=b?"prior":"z"; save(); draw(); };
+$("propBAnch").onchange=()=>{ save(); draw(); };
+for(const k of ["tdPts","tdPtsLvl","tdTrue","propAutoMode"]) $(k).onchange=()=>{ save(); draw(); };
 $("propBasis").onchange=()=>{ save(); draw(); };
 $("propFull").onchange=()=>{ save(); draw(); };
-$("propAuto").onclick=()=>{ const a=propAutoXYZ(); if(!a){ setStatus("Auto XYZ: need a swing with at least one bar after its extreme in the visible window"); return; }
+$("propAuto").onclick=()=>{ const a = $("propAutoMode").value==="demark" ? propAutoDeMark(Math.floor(view.right), tdPtsLevel(), propBasis()==="close", $("tdTrue").checked) : propAutoXYZ();
+  if(!a){ setStatus("Auto XYZ: no qualifying swing found as of the last visible bar"); return; }
   PROPS.push(a); saveProps(); PICK=null; propHint(); draw(); };
 window.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && PICK){ PICK=null; propHint(); draw(); } });
 $("zoomIn").onclick=()=>zoomAt(1/1.25); $("zoomOut").onclick=()=>zoomAt(1.25); $("zoomReset").onclick=()=>{resetView();draw();};

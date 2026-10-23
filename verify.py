@@ -77,11 +77,64 @@ def check_propulsion() -> bool:
     # reproduced exactly by A = Z + 0.25R and F = Z + 1.0R with X=103.675, Y=112.40, Z=108.58
     # (Bloomberg prints; FMP has 103.68 / 108.59). Bloomberg's 113.2125 is NOT Z + 0.5R (=112.9425).
     if node:
-        js = m.group(0) + "\nconst o=propLevels(103.675,112.40,108.58,'up',0.25,0.5);console.log(o.A+' '+o.F);"
-        a, f = map(float, subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.split())
-        good = round(a, 4) == 110.7613 and round(f, 4) == 117.305
+        js = m.group(0) + "\nconst o=propLevels(103.675,112.40,108.58,'up',0.25,0.5,108.85);console.log(o.A+' '+o.F+' '+o.B);"
+        a, f, bb = map(float, subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout.split())
+        good = round(a, 4) == 110.7613 and round(f, 4) == 117.305 and round(bb, 4) == 113.2125
         ok &= good
-        print(f"  {'PASS' if good else 'FAIL'}  Bloomberg GDXJ calibration (JS): A={a:.4f} (exp 110.7613)  Full={f:.4f} (exp 117.3050)")
+        print(f"  {'PASS' if good else 'FAIL'}  Bloomberg GDXJ calibration (JS): A={a:.4f} (exp 110.7613)  Full={f:.4f} (exp 117.3050)  B={bb:.4f} (exp 113.2125, B anchored on the bar before Z: low 108.85)")
+    return ok
+
+
+def _js_function(src: str, name: str) -> str:
+    """Extract `function name(...) { ... }` from index.html by brace matching."""
+    i = src.index(f"function {name}(")
+    j = src.index("{", src.index(")", i))
+    depth = 0
+    for k in range(j, len(src)):
+        depth += src[k] == "{"
+        depth -= src[k] == "}"
+        if depth == 0:
+            return src[i:k + 1]
+    raise ValueError(name)
+
+
+def check_demark_pivots() -> bool:
+    """TD Points (levels, equal-bar rule) and Auto (DeMark) X/Y/Z, run in node on fixtures."""
+    import json
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        print("  SKIP  demark pivots (node not found)")
+        return True
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = open(os.path.join(here, "index.html"), encoding="utf-8").read()
+    fns = "\n".join(_js_function(src, n) for n in ("tdPoints", "propAutoDeMark"))
+    ok = True
+
+    def run(bars, call):
+        d = [str(i) for i in range(len(bars))] if not isinstance(bars[0][0], str) else [b[0] for b in bars]
+        o = [b[-4] for b in bars]; h = [b[-3] for b in bars]; l = [b[-2] for b in bars]; c = [b[-1] for b in bars]
+        js = (f"const D={{n:{len(bars)},dates:{json.dumps(d)},o:{json.dumps(o)},h:{json.dumps(h)},l:{json.dumps(l)},c:{json.dumps(c)}}};\n"
+              + fns + f"\nconsole.log(JSON.stringify({call}));")
+        return json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+
+    # 1) levels: synthetic highs 1,2,5,3,4,9,4,3,5,... with strict inequality and the equal-high rule
+    hs = [1, 2, 5, 3, 4, 9, 4, 3, 5, 5, 2, 1, 7, 1]   # idx2 L2, idx5 L5, equal run 8-9 -> idx9 L2, idx12 L1
+    bars = [[h - 0.5, h, h - 1, h - 0.5] for h in hs]
+    t = run(bars, "tdPoints(D.n,false,false)")
+    exp = {2: 2, 5: 5, 9: 2, 12: 1}
+    got = {i: v for i, v in enumerate(t["hi"]) if v}
+    good = got == exp
+    ok &= good
+    print(f"  {'PASS' if good else 'FAIL'}  TD Point highs: levels {got} (exp {exp}; equal highs pick the most recent bar)")
+    # 2) Auto (DeMark) reproduces Bloomberg's GDXJ 30m X/Y/Z as of Oct 16 15:30 (Z = latest TD low, Y/X per TD Retracement critical-price rule)
+    fx = json.load(open(os.path.join(here, "fixtures", "gdxj_30m_oct2026.json")))
+    for lvl in (1, 2):
+        a = run(fx["bars"], f"propAutoDeMark(D.n-1,{lvl},false,false)")
+        good = a == {"side": "up", "x": "2026-10-14T14:00", "y": "2026-10-16T10:30", "z": "2026-10-16T14:30"}
+        ok &= good
+        print(f"  {'PASS' if good else 'FAIL'}  Auto (DeMark) level {lvl} on GDXJ 30m @ Oct 16 15:30: {a}")
     return ok
 
 
@@ -261,8 +314,12 @@ def main():
     # TD Propulsion (Perl, USD/JPY Fig. 6.7): run the chart's own JS propLevels()
     if not check_propulsion():
         failures.append("propulsion")
+    if not check_demark_pivots():
+        sys.exit(1)
     if not check_breakout_qualifiers():
         failures.append("breakout qualifiers")
+    if not check_demark_pivots():
+        failures.append("demark pivots")
     if not check_ipo_grid():
         failures.append("ipo grid")
     if "--ipo" in sys.argv:
