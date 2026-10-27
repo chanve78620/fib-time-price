@@ -1,6 +1,6 @@
 {
   "scan_date": "2026-10-27",
-  "scanned_at": "2026-10-27T17:21:47.839122-04:00",
+  "scanned_at": "2026-10-27T17:56:12.401781-04:00",
   "universe_size": 540,
   "universe_counts": {
     "sp500": 503,
@@ -13,7 +13,7 @@
     "sp500": "fmp",
     "nasdaq100": "fmp"
   },
-  "runtime_sec": 13.6,
+  "runtime_sec": 13.9,
   "errors": 0,
   "params": {
     "swing": 3,
@@ -23,6 +23,7 @@
     "years": 2.0
   },
   "site": "https://fib-time-price.onrender.com",
+  "n_earnings_flag": 10,
   "rows": [
     {
       "ticker": "AES",
@@ -40,7 +41,10 @@
       "hit_rate_1y": 0.429,
       "chart_url": "https://fib-time-price.onrender.com/?t=AES&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "DLR",
@@ -58,7 +62,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=DLR&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "DOC",
@@ -76,7 +83,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=DOC&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "FRT",
@@ -94,7 +104,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=FRT&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "GS",
@@ -112,7 +125,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=GS&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "GWW",
@@ -130,7 +146,10 @@
       "hit_rate_1y": 0.6,
       "chart_url": "https://fib-time-price.onrender.com/?t=GWW&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "HBAN",
@@ -148,7 +167,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=HBAN&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "ITW",
@@ -166,7 +188,10 @@
       "hit_rate_1y": 0.429,
       "chart_url": "https://fib-time-price.onrender.com/?t=ITW&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-27",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "MAA",
@@ -184,7 +209,10 @@
       "hit_rate_1y": 0.6,
       "chart_url": "https://fib-time-price.onrender.com/?t=MAA&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "NUE",
@@ -202,7 +230,10 @@
       "hit_rate_1y": 0.333,
       "chart_url": "https://fib-time-price.onrender.com/?t=NUE&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": "2026-10-26",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "PNC",
@@ -220,7 +251,10 @@
       "hit_rate_1y": 0.167,
       "chart_url": "https://fib-time-price.onrender.com/?t=PNC&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "QCOM",
@@ -238,7 +272,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=QCOM&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "RL",
@@ -256,7 +293,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=RL&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SW",
@@ -274,7 +314,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=SW&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-28",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "TFC",
@@ -292,7 +335,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=TFC&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "TRGP",
@@ -310,7 +356,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=TRGP&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "URI",
@@ -328,7 +377,10 @@
       "hit_rate_1y": 0.333,
       "chart_url": "https://fib-time-price.onrender.com/?t=URI&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "BA",
@@ -346,7 +398,10 @@
       "hit_rate_1y": 0.25,
       "chart_url": "https://fib-time-price.onrender.com/?t=BA&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": true
+      "in_zone_now": true,
+      "earnings_date": "2026-10-27",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "BF-B",
@@ -364,7 +419,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=BF-B&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SPX",
@@ -382,7 +440,10 @@
       "hit_rate_1y": 0.545,
       "chart_url": "https://fib-time-price.onrender.com/?t=SPX&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SPY",
@@ -400,7 +461,10 @@
       "hit_rate_1y": 0.444,
       "chart_url": "https://fib-time-price.onrender.com/?t=SPY&tf=1d&tp=1",
       "future": false,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "AMP",
@@ -418,7 +482,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=AMP&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-29",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "BKR",
@@ -436,7 +503,10 @@
       "hit_rate_1y": 0.333,
       "chart_url": "https://fib-time-price.onrender.com/?t=BKR&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "CSX",
@@ -454,7 +524,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=CSX&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "DOC",
@@ -472,7 +545,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=DOC&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "DVA",
@@ -490,7 +566,10 @@
       "hit_rate_1y": 0.333,
       "chart_url": "https://fib-time-price.onrender.com/?t=DVA&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "EXE",
@@ -508,7 +587,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=EXE&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "FERG",
@@ -526,7 +608,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=FERG&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "GEHC",
@@ -544,7 +629,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=GEHC&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-28",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "LULU",
@@ -562,7 +650,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=LULU&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "LVS",
@@ -580,7 +671,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=LVS&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "MCO",
@@ -598,7 +692,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=MCO&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "MTB",
@@ -616,7 +713,10 @@
       "hit_rate_1y": 0.4,
       "chart_url": "https://fib-time-price.onrender.com/?t=MTB&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "NEE",
@@ -634,7 +734,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=NEE&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "PFG",
@@ -652,7 +755,10 @@
       "hit_rate_1y": 0.4,
       "chart_url": "https://fib-time-price.onrender.com/?t=PFG&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "REG",
@@ -670,7 +776,10 @@
       "hit_rate_1y": 0.833,
       "chart_url": "https://fib-time-price.onrender.com/?t=REG&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "RL",
@@ -688,7 +797,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=RL&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "ROL",
@@ -706,7 +818,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=ROL&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SNA",
@@ -724,7 +839,10 @@
       "hit_rate_1y": 0.667,
       "chart_url": "https://fib-time-price.onrender.com/?t=SNA&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SW",
@@ -742,7 +860,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=SW&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-28",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "WFC",
@@ -760,7 +881,10 @@
       "hit_rate_1y": 0.667,
       "chart_url": "https://fib-time-price.onrender.com/?t=WFC&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "AFL",
@@ -778,7 +902,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=AFL&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "AMZN",
@@ -796,7 +923,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=AMZN&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-29",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "ARKK",
@@ -814,7 +944,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=ARKK&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "BAX",
@@ -832,7 +965,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=BAX&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "CHRW",
@@ -850,7 +986,10 @@
       "hit_rate_1y": null,
       "chart_url": "https://fib-time-price.onrender.com/?t=CHRW&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-10-28",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "CRM",
@@ -868,7 +1007,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=CRM&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "DTE",
@@ -886,7 +1028,10 @@
       "hit_rate_1y": 0.667,
       "chart_url": "https://fib-time-price.onrender.com/?t=DTE&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "HUM",
@@ -904,7 +1049,10 @@
       "hit_rate_1y": null,
       "chart_url": "https://fib-time-price.onrender.com/?t=HUM&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "JBHT",
@@ -922,7 +1070,10 @@
       "hit_rate_1y": 0.5,
       "chart_url": "https://fib-time-price.onrender.com/?t=JBHT&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "PLTR",
@@ -940,7 +1091,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=PLTR&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "PPL",
@@ -958,7 +1112,10 @@
       "hit_rate_1y": 0.75,
       "chart_url": "https://fib-time-price.onrender.com/?t=PPL&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "QQQ",
@@ -976,7 +1133,10 @@
       "hit_rate_1y": 0.8,
       "chart_url": "https://fib-time-price.onrender.com/?t=QQQ&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SMCI",
@@ -994,7 +1154,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=SMCI&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": "2026-11-03",
+      "earnings_timing": null,
+      "earnings_flag": true
     },
     {
       "ticker": "SOLV",
@@ -1012,7 +1175,10 @@
       "hit_rate_1y": 0.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=SOLV&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SPX",
@@ -1030,7 +1196,10 @@
       "hit_rate_1y": 0.545,
       "chart_url": "https://fib-time-price.onrender.com/?t=SPX&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "SPY",
@@ -1048,7 +1217,10 @@
       "hit_rate_1y": 0.444,
       "chart_url": "https://fib-time-price.onrender.com/?t=SPY&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "STLD",
@@ -1066,7 +1238,10 @@
       "hit_rate_1y": 0.6,
       "chart_url": "https://fib-time-price.onrender.com/?t=STLD&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     },
     {
       "ticker": "VRSN",
@@ -1084,7 +1259,10 @@
       "hit_rate_1y": 1.0,
       "chart_url": "https://fib-time-price.onrender.com/?t=VRSN&tf=1d&tp=1",
       "future": true,
-      "in_zone_now": false
+      "in_zone_now": false,
+      "earnings_date": null,
+      "earnings_timing": null,
+      "earnings_flag": false
     }
   ],
   "n_now": 21,

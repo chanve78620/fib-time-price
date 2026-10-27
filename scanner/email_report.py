@@ -63,6 +63,14 @@ def _kind(r: dict) -> str:
     return "LOW" if k == "low" else "HIGH"
 
 
+def _earn_label(r: dict) -> str:
+    if not r.get("earnings_flag"):
+        return "—"
+    d = r.get("earnings_date") or "?"
+    tm = r.get("earnings_timing")
+    return f"{d} {tm}" if tm else d
+
+
 def _chart(t: str) -> str:
     return CHART.format(t=t)
 
@@ -92,36 +100,45 @@ def build(data: dict) -> tuple[str, str, str, dict]:
     def rows_html(rows: list[dict]) -> str:
         if not rows:
             return '<p style="color:#666;margin:8px 0;">None today.</p>'
+        th = (
+            'style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;"'
+        )
         parts = [
             '<table cellpadding="0" cellspacing="0" border="0" width="100%" '
             'style="border-collapse:collapse;font-size:13px;font-family:'
             "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;\">"
             "<thead><tr>"
-            '<th align="left" style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;">Ticker</th>'
-            '<th align="left" style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;">Turn</th>'
-            '<th align="left" style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;">Window</th>'
-            '<th align="left" style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;">Zone</th>'
-            '<th align="right" style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;">Close</th>'
-            '<th align="right" style="padding:8px 10px;border-bottom:2px solid #ddd;background:#f6f7f9;">Dist %</th>'
+            f'<th align="left" {th}>Ticker</th>'
+            f'<th align="left" {th}>Turn</th>'
+            f'<th align="left" {th}>Window</th>'
+            f'<th align="left" {th}>Zone</th>'
+            f'<th align="right" {th}>Close</th>'
+            f'<th align="right" {th}>Dist %</th>'
+            f'<th align="left" {th}>Earnings</th>'
             "</tr></thead><tbody>"
         ]
         for i, r in enumerate(rows):
-            bg = "#ffffff" if i % 2 == 0 else "#fafbfc"
-            t = r["ticker"]
-            href = html.escape(_chart(t), quote=True)
+            flagged = bool(r.get("earnings_flag"))
+            if flagged:
+                bg, color, link = "#fce8e6", "#c5221f", "#c5221f"
+            else:
+                bg = "#ffffff" if i % 2 == 0 else "#fafbfc"
+                color, link = "#1a1a1a", "#0b57d0"
+            tick = r["ticker"]
+            href = html.escape(_chart(tick), quote=True)
+            td = f'style="padding:7px 10px;border-bottom:1px solid #eee;color:{color};"'
             parts.append(
-                f'<tr style="background:{bg};">'
-                f'<td style="padding:7px 10px;border-bottom:1px solid #eee;">'
-                f'<a href="{href}" style="color:#0b57d0;font-weight:600;text-decoration:none;">'
-                f"{html.escape(t)}</a></td>"
-                f'<td style="padding:7px 10px;border-bottom:1px solid #eee;">{html.escape(_kind(r))}</td>'
-                f'<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;">'
+                f'<tr style="background:{bg};color:{color};">'
+                f"<td {td}>"
+                f'<a href="{href}" style="color:{link};font-weight:700;text-decoration:none;">'
+                f"{html.escape(tick)}</a></td>"
+                f"<td {td}>{html.escape(_kind(r))}</td>"
+                f'<td style="padding:7px 10px;border-bottom:1px solid #eee;color:{color};white-space:nowrap;">'
                 f"{html.escape(_window(r))}</td>"
-                f'<td style="padding:7px 10px;border-bottom:1px solid #eee;">{html.escape(str(r.get("zone_label") or "—"))}</td>'
-                f'<td align="right" style="padding:7px 10px;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums;">'
-                f"{html.escape(_close(r))}</td>"
-                f'<td align="right" style="padding:7px 10px;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums;">'
-                f"{html.escape(_dist(r))}</td>"
+                f"<td {td}>{html.escape(str(r.get('zone_label') or '—'))}</td>"
+                f'<td align="right" {td}>{html.escape(_close(r))}</td>'
+                f'<td align="right" {td}>{html.escape(_dist(r))}</td>'
+                f"<td {td}><strong>{html.escape(_earn_label(r))}</strong></td>"
                 f"</tr>"
             )
         parts.append("</tbody></table>")
@@ -132,12 +149,13 @@ def build(data: dict) -> tuple[str, str, str, dict]:
             return "  (none)\n"
         lines = []
         for r in rows:
-            t = r["ticker"]
+            tick = r["ticker"]
+            flag = " [EARNINGS]" if r.get("earnings_flag") else ""
             lines.append(
-                f"  {t:6}  {_kind(r):4}  {_window(r):23}  "
+                f"  {tick:6}  {_kind(r):4}  {_window(r):23}  "
                 f"zone {r.get('zone_label') or '—'}  "
-                f"close {_close(r)}  dist {_dist(r)}\n"
-                f"         {_chart(t)}\n"
+                f"close {_close(r)}  dist {_dist(r)}  earn {_earn_label(r)}{flag}\n"
+                f"         {_chart(tick)}\n"
             )
         return "".join(lines)
 
@@ -149,6 +167,7 @@ def build(data: dict) -> tuple[str, str, str, dict]:
     <p style="margin:0 0 16px;color:#555;font-size:14px;">
       Scan date <strong>{html.escape(nice)}</strong>
       · universe <strong>{meta['universe_size']}</strong> tickers
+      · <span style="color:#c5221f;font-weight:600;">red rows = earnings on a window day or the next trading day</span>
     </p>
     <table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;font-size:13px;">
       <tr>

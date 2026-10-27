@@ -51,6 +51,144 @@ _last_req = 0.0
 _min_interval = 0.12  # ~8 req/s soft cap
 
 
+EARN_CACHE = SCANNER / "cache" / "earnings"
+
+
+def _next_trading_day(iso: str) -> str:
+    """Next Mon–Fri after iso (holiday-agnostic, matches scanner windows)."""
+    from datetime import datetime as _dt, timedelta as _td
+    d = _dt.strptime(iso[:10], "%Y-%m-%d").date()
+    d += _td(days=1)
+    while d.weekday() >= 5:
+        d += _td(days=1)
+    return d.isoformat()
+
+
+def _dates_in_window(start: str, end: str) -> set[str]:
+    """Inclusive calendar dates from start..end (ISO)."""
+    from datetime import datetime as _dt, timedelta as _td
+    a = _dt.strptime(start[:10], "%Y-%m-%d").date()
+    b = _dt.strptime(end[:10], "%Y-%m-%d").date()
+    if b < a:
+        a, b = b, a
+    out = set()
+    d = a
+    while d <= b:
+        out.add(d.isoformat())
+        d += _td(days=1)
+    return out
+
+
+def _norm_earn_time(raw) -> str | None:
+    """Map FMP time fields to BMO/AMC when present."""
+    if raw is None:
+        return None
+    s = str(raw).strip().lower()
+    if not s:
+        return None
+    if s in ("bmo", "before market open", "before-market", "pre-market", "premarket"):
+        return "BMO"
+    if s in ("amc", "after market close", "after-market", "post-market", "postmarket"):
+        return "AMC"
+    if "before" in s or s == "bmo":
+        return "BMO"
+    if "after" in s or s == "amc":
+        return "AMC"
+    # pass through short codes
+    if s.upper() in ("BMO", "AMC"):
+        return s.upper()
+    return None
+
+
+def fetch_earnings_calendar(d0: str, d1: str) -> dict[str, list[dict]]:
+    """Day-chunked FMP stable/earnings-calendar → {SYMBOL: [{date, time}, ...]}.
+
+    Wide from/to ranges hit a 4000-row cap and drop US names; one day at a time
+    stays under the cap. Disk-cached per day under cache/earnings/.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    EARN_CACHE.mkdir(parents=True, exist_ok=True)
+    a = _dt.strptime(d0[:10], "%Y-%m-%d").date()
+    b = _dt.strptime(d1[:10], "%Y-%m-%d").date()
+    by_sym: dict[str, list[dict]] = {}
+    d = a
+    while d <= b:
+        iso = d.isoformat()
+        cache_path = EARN_CACHE / f"{iso}.json"
+        rows = None
+        if cache_path.exists():
+            try:
+                rows = json.loads(cache_path.read_text())
+            except Exception:
+                rows = None
+        if rows is None:
+            params = {"from": iso, "to": iso, "apikey": _key()}
+            rows = []
+            for attempt in range(4):
+                _throttle()
+                try:
+                    r = _http.get(FMP_BASE + "earnings-calendar", params=params, timeout=40)
+                except Exception:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                if r.status_code == 429:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                if r.status_code == 200:
+                    j = r.json()
+                    rows = j if isinstance(j, list) else []
+                break
+            cache_path.write_text(json.dumps(rows))
+        for x in rows or []:
+            sym = str(x.get("symbol") or "").strip().upper()
+            # Keep hyphenated US (BF-B); drop exchange suffixes like 018250.KS
+            if not sym or "." in sym:
+                continue
+            ed = str(x.get("date") or "")[:10]
+            if not ed:
+                continue
+            timing = _norm_earn_time(x.get("time") or x.get("hour") or x.get("when"))
+            by_sym.setdefault(sym, []).append({"date": ed, "time": timing})
+        d += _td(days=1)
+    return by_sym
+
+
+def annotate_earnings(rows: list[dict]) -> list[dict]:
+    """Set earnings_date, earnings_timing, earnings_flag on each row."""
+    if not rows:
+        return rows
+    starts = [r["window_start"][:10] for r in rows if r.get("window_start")]
+    ends = [r["window_end"][:10] for r in rows if r.get("window_end")]
+    d0 = min(starts)
+    # pad +5 calendar days past furthest next-trading-day
+    from datetime import datetime as _dt, timedelta as _td
+    d1 = (_dt.strptime(max(ends), "%Y-%m-%d").date() + _td(days=10)).isoformat()
+    cal = fetch_earnings_calendar(d0, d1)
+    for r in rows:
+        t = (r.get("ticker") or "").upper()
+        # SPX/ETF index aliases: no single-stock earnings
+        events = cal.get(t) or []
+        # also try FMP alias if different display (rare)
+        ws, we = r["window_start"][:10], r["window_end"][:10]
+        danger = _dates_in_window(ws, we)
+        danger.add(_next_trading_day(we))
+        hit = None
+        for ev in events:
+            if ev["date"] in danger:
+                hit = ev
+                break
+        if hit:
+            r["earnings_date"] = hit["date"]
+            r["earnings_timing"] = hit.get("time")  # BMO/AMC or None
+            r["earnings_flag"] = True
+        else:
+            r["earnings_date"] = None
+            r["earnings_timing"] = None
+            r["earnings_flag"] = False
+    return rows
+
+
+
 def _today_et() -> str:
     return datetime.now(ET).date().isoformat()
 
@@ -163,6 +301,9 @@ def row_from_flag(f, last_close: float, hit_rate: float | None, status: str) -> 
         "chart_url": chart_url(f.ticker, base=SITE),
         "future": bool(f.future),
         "in_zone_now": bool(f.in_zone_now),
+        "earnings_date": None,
+        "earnings_timing": None,
+        "earnings_flag": False,
     }
 
 
@@ -238,7 +379,7 @@ def write_outputs(rows: list[dict], meta: dict) -> Path:
     cols = [
         "ticker", "kind", "status", "window_start", "window_end", "zone_label",
         "zone_lo", "zone_hi", "last_close", "dist_to_zone_pct", "strength",
-        "hit_rate_1y", "chart_url",
+        "hit_rate_1y", "earnings_date", "earnings_timing", "earnings_flag", "chart_url",
     ]
     with csv_path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
@@ -304,11 +445,16 @@ def main() -> int:
         },
         "site": SITE,
     }
+    rows = annotate_earnings(rows)
+    n_earn = sum(1 for r in rows if r.get("earnings_flag"))
+    meta["n_earnings_flag"] = n_earn
     path = write_outputs(rows, meta)
     payload = json.loads(path.read_text())
     print(
         f"DONE now={payload['n_now']} upcoming={payload['n_upcoming']} "
-        f"low={payload['n_low']} high={payload['n_high']} runtime={elapsed}s -> {path}",
+        f"low={payload['n_low']} high={payload['n_high']} "
+        f"earnings_flag={payload.get('n_earnings_flag', meta.get('n_earnings_flag'))} "
+        f"runtime={elapsed}s -> {path}",
         flush=True,
     )
     return 0

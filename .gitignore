@@ -6,3 +6,4 @@ scanner/cache/bars/
 scanner/out/*.csv
 scanner/__pycache__/
 scanner/**/__pycache__/
+scanner/cache/earnings/
