@@ -830,7 +830,7 @@ function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{
 // (so zooming out / panning / a taller autoscale simply shows more lines); IPO_CAP only bounds the line count.
 // The IPO price is the split-adjusted offer price from /api/ipo (FMP / SEC filings), or a manual per-ticker value.
 const IPOS = {};                 // ticker -> /api/ipo result
-const IPO_CAP = 5000, IPO_COL = "#7f9cc4";
+const IPO_CAP = 5000, IPO_COL = "#e02020";
 const DENSE_MSG=" · lines hidden: too close together at this scale (raise Step× or zoom in)";
 let IPO_DENSE = false;      // step too fine for the visible price range: lines hidden (status says so)
 function ipoLevels(ipo, mult, lo, hi, below, cap){
