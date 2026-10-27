@@ -85,6 +85,7 @@
     <input type="number" id="dtpMin" min="0" max="95" step="5" value="0" style="width:46px" />
     <span class="chk" title="Walk-forward DTP under past bars: at each date, only pivots confirmed by then (no lookahead). Compare clusters to actual tops/bottoms."><input type="checkbox" id="dtpHist" checked /><label for="dtpHist">DTP history</label></span>
     <select id="dtpHistLB" title="How far back to compute the walk-forward DTP (requires enough loaded history)"><option value="1y">1Y</option><option value="2y">2Y</option><option value="all">All</option></select>
+    <span class="chk" title="Carolyn Boroden–style royal setup: strong DTP timing cluster (≥ top-decile / 0.9) coinciding with price in a Fib confluence zone. Gold box = time window × zone. Past flags use walk-forward DTP (no lookahead)."><input type="checkbox" id="showTimePrice" /><label for="showTimePrice"><b>Time+Price</b></label></span>
     <label for="target">Target</label>
     <input type="number" id="target" step="any" placeholder="—" style="width:72px" />
   </div>
@@ -131,6 +132,7 @@
   <div class="tables">
     <div><b>Price zones</b><table id="tblZones"></table></div>
     <div><b>DTP time clusters (upcoming)</b><table id="tblTime"></table></div>
+    <div><b>Time+Price flags</b><table id="tblTimePrice"></table></div>
     <div><b>Swing pivots</b><table id="tblPiv"></table></div>
     <div><b>Active price levels</b><table id="tblLv"></table></div>
     <div><b>TD Propulsion</b><table id="tblProp"></table></div>
@@ -145,6 +147,7 @@
       <span style="color:#0a7a1f">EX Ret</span> = external retracement past the swing start (1.272, 1.618, 2.618);
       <span style="color:#d01010">App</span> = alternate price projection, swing A→B length projected from C (0.618, 1.000, 1.618).
       Only levels not yet traded through since their anchor pivot are drawn (tick <i>Hit lvls</i> to show all). A wick through a level counts. Levels just beyond the most recent pivot’s extreme that price came near but never traded through (within one average bar range; a low exactly at the level counts as a test) are marked <b>held</b>: bolder, labelled “held”, with a dot on the pivot bar. Lines start at the anchor pivot bar. Two or more levels inside <i>Zone %</i> of price form a bold zone label (e.g. 7703-16).</p>
+    <p><b>Time+Price:</b> a “royal” setup flag when a strong DTP cluster (normalized ≥ 0.9, within ±Band) coincides with price trading into an active Fib zone — support for LOW timing, resistance for HIGH. Gold/amber box marks the intersecting time×price rectangle; a diamond marks the peak bar. Past flags walk forward with no lookahead and show whether a matching pivot formed in the window (✓/✗). Upcoming watches use live DTP peaks over active zones. Toggle via UI or <code>?tp=1</code> (scanner deep-links). Logic mirrors <code>fib_time_price/time_price_flag.py</code>.</p>
     <p><b>DTP time pane:</b> counts time projections landing on each bar, counted in <b>bars of the selected timeframe</b> (future slots skip weekends and main NYSE holidays; intraday US stocks/indexes use the 9:30–16:00 ET session, futures ≈ Sun 18:00–Fri 17:00 ET with the daily 17:00–18:00 break, crypto 24×7; half-days are not modeled): time retracements/extensions of prior swings (0.382–2.618), alternate time projections (A→B duration from C: 0.618, 1, 1.618) and same-kind cycles (low→low, high→high: 0.618–1.618). Bar height = number of projections coinciding. <i>Auto</i> targets the pivot the current swing is heading for. <b>DTP history</b> (on by default) walks the same rules forward under past bars: at each date only pivots already confirmed by then are used (no lookahead), so you can see how timing clusters lined up with actual tops and bottoms. Markers on the pane flag confirmed pivots; the optional hit-rate is the share of those pivots within ±Band bars of a top-decile cluster.</p>
     <p><b>Mouse:</b> wheel = zoom, drag = pan, Shift+wheel or drag on the price axis = vertical scale, double-click = reset. Touch: drag to pan, pinch to zoom.</p>
     <p>Ticker shortcuts: SPX → ^GSPC, NDX, DJI, RUT, VIX, ES/NQ/YM/RTY/CL/GC/SI → futures, BTC/ETH. Data: Financial Modeling Prep (Yahoo Finance fallback) — weekly, daily, 60m, 30m, 15m.</p>
@@ -186,6 +189,7 @@ let D = null;        // data
 let P = [];          // pivots
 let LV = [];         // price levels (all computed)
 let ZN = [];         // zones
+let TP_FLAGS = [];   // Time+Price (royal) confluence flags
 let TP = {series:[], target:"low"};
 let PIVR = []; // drawn pivot-label rects (click toggles DTP inclusion) // time projections
 let MA = [];
@@ -525,6 +529,173 @@ function computeTimeHistory(){
   DTP_HIST_CACHE={key, val}; return val;
 }
 
+
+// ---------- Time+Price (royal) confluence — mirrors fib_time_price/time_price_flag.py ----------
+function tpDateShort(d){
+  if(!d) return "";
+  if(String(d).charAt(0)==="+") return d;
+  const p=String(d).slice(0,10).split("-"); if(p.length<3) return d;
+  return `${+p[1]}/${+p[2]}`;
+}
+function tpZoneRole(z, mid, kind){
+  const zm=0.5*(z.lo+z.hi);
+  return kind==="low" ? zm<=mid*1.002 : zm>=mid*0.998;
+}
+function tpBarInZone(i,z){ return D.l[i]<=z.hi && D.h[i]>=z.lo; }
+function tpClusterRuns(strength, minS, startI){
+  const runs=[]; let i=startI|0; const n=strength.length;
+  while(i<n){
+    if((strength[i]||0)<minS){ i++; continue; }
+    const i0=i; let peakI=i, peakS=strength[i]; i++;
+    while(i<n && (strength[i]||0)>=minS){ if(strength[i]>peakS){ peakI=i; peakS=strength[i]; } i++; }
+    runs.push({i0,i1:i-1,peakI,peakS});
+  }
+  return runs;
+}
+function tpHistStrengthByKind(){
+  // Rebuild per-bar normalized hist from TP.hist.series (already walk-forward, no lookahead)
+  const out={low:null,high:null};
+  if(!TP.hist||!TP.hist.series) return out;
+  for(const se of TP.hist.series){
+    const a=new Float64Array(D.n);
+    for(const q of se.pts){ if(q.xi>=0&&q.xi<D.n) a[q.xi]=Math.max(a[q.xi], q.h||0); }
+    out[se.kind]=a;
+  }
+  return out;
+}
+function computeTimePriceFlags(){
+  TP_FLAGS=[];
+  if(!D || !$("showTimePrice") || !$("showTimePrice").checked) return;
+  const minS=0.9;
+  const band=Math.max(0.3, +$("band").value||2);
+  const tol=Math.max(1, Math.ceil(band));
+  const startI = TP.hist && TP.hist.startI!=null ? TP.hist.startI : Math.max(0, D.n-260);
+  const histMap=tpHistStrengthByKind();
+  const kinds=[];
+  if(histMap.low) kinds.push("low");
+  if(histMap.high) kinds.push("high");
+  if(!kinds.length && TP.target) kinds.push(TP.target==="both"?"low":TP.target);
+  const confPiv=(TP.hist&&TP.hist.pivs)||P.filter(p=>!p.tent);
+  const zones=ZN||[];
+
+  for(const K of kinds){
+    const strength=histMap[K]; if(!strength) continue;
+    for(const run of tpClusterRuns(strength, minS, startI)){
+      const {i0,i1,peakI,peakS}=run;
+      let sh=0,sl=0,c=0; for(let i=i0;i<=i1;i++){ sh+=D.h[i]; sl+=D.l[i]; c++; }
+      const mid=0.5*(sh/c+sl/c);
+      // as-of zones: levels anchored by i0, clustered vs window mid (not truncated to "near last close")
+      const lvAs = (LV||[]).filter(v=>v.start<=i0 && v.price>0);
+      // recompute zones with mid as ref by temporarily patching — computeZones uses D.c[n-1]; build locally:
+      const span=(+$("tol").value||0.25)/100*mid;
+      const sorted=[...lvAs].sort((a,b)=>a.price-b.price); const zlist=[]; let cur=[];
+      for(const v of sorted){ if(cur.length && v.price-cur[0].price>span){ if(cur.length>=2) zlist.push(cur); cur=[]; } cur.push(v); }
+      if(cur.length>=2) zlist.push(cur);
+      const zBuilt=zlist.map(z=>({lo:z[0].price,hi:z[z.length-1].price,n:z.length,start:Math.min(...z.map(v=>v.start)),label:zoneLabel(z[0].price,z[z.length-1].price)}));
+      const cand=zBuilt.filter(z=>z.start<=i0 && tpZoneRole(z,mid,K)).sort((a,b)=>b.n-a.n);
+      const j0=Math.max(0,i0-tol), j1=Math.min(D.n-1,i1+tol);
+      const pad=Math.abs(mid)*0.0015;
+      let hitZ=null;
+      for(const z of cand){
+        let ok=false;
+        for(let i=j0;i<=j1;i++){ if(D.l[i]<=z.hi+pad && D.h[i]>=z.lo-pad){ ok=true; break; } }
+        if(ok){ hitZ=z; break; }
+      }
+      if(!hitZ) continue;
+      let outOk=false, outI=null, outD=null;
+      for(const p of confPiv){ if(p.kind!==K) continue; if(p.i>=i0-tol && p.i<=i1+tol){ outOk=true; outI=p.i; outD=p.date; break; } }
+      TP_FLAGS.push({
+        kind:K, i0,i1, peakI, peakS, future:false,
+        date0:D.dates[i0], date1:D.dates[i1], peakDate:D.dates[peakI],
+        zoneLo:hitZ.lo, zoneHi:hitZ.hi, zoneN:hitZ.n, zoneLabel:hitZ.label,
+        outcome:outOk, outcomeI:outI, outcomeDate:outD,
+        label:`TIME + PRICE — possible ${K.toUpperCase()} ${tpDateShort(D.dates[i0])}-${tpDateShort(D.dates[i1])} @ ${hitZ.label}`
+      });
+    }
+  }
+
+  // Upcoming / live watches from TP.series peaks over active zones
+  for(const se of (TP.series||[])){
+    const K=se.kind; const pts=(se.pts||[]).filter(q=> (q.h||0)>=minS && q.xi>=D.n-1);
+    if(!pts.length) continue;
+    // cluster contiguous
+    const runs=[];
+    for(const q of pts){
+      if(!runs.length || q.xi>runs[runs.length-1][runs[runs.length-1].length-1].xi+1) runs.push([q]);
+      else runs[runs.length-1].push(q);
+    }
+    const mid=D.c[D.n-1];
+    for(const run of runs){
+      const peak=run.reduce((a,b)=> (b.h>a.h?b:a));
+      const i0=run[0].xi, i1=run[run.length-1].xi;
+      const cand=zones.filter(z=>tpZoneRole(z,mid,K));
+      if(!cand.length) continue;
+      const z=cand.slice().sort((a,b)=>Math.abs(mid-0.5*(a.lo+a.hi))-Math.abs(mid-0.5*(b.lo+b.hi)))[0];
+      const d0 = i0<D.n ? D.dates[i0] : (run[0].date||`+${i0-D.n+1}b`);
+      const d1 = i1<D.n ? D.dates[i1] : (run[run.length-1].date||`+${i1-D.n+1}b`);
+      const pd = peak.xi<D.n ? D.dates[peak.xi] : (peak.date||d0);
+      TP_FLAGS.push({
+        kind:K, i0,i1, peakI:peak.xi, peakS:peak.h, future:true,
+        date0:d0, date1:d1, peakDate:pd,
+        zoneLo:z.lo, zoneHi:z.hi, zoneN:z.n, zoneLabel:z.label,
+        outcome:null, outcomeI:null, outcomeDate:null,
+        label:`TIME + PRICE — watch ${K.toUpperCase()} ${tpDateShort(d0)}-${tpDateShort(d1)} @ ${z.label}`
+      });
+    }
+  }
+  // light de-dupe
+  const kept=[];
+  for(const f of TP_FLAGS){
+    if(kept.some(g=>!f.future&&!g.future&&f.kind===g.kind&&!(f.i1<g.i0||f.i0>g.i1)&&Math.abs(f.zoneLo-g.zoneLo)<1e-9)) continue;
+    kept.push(f);
+  }
+  TP_FLAGS=kept;
+}
+
+function drawTimePriceFlags(iA,iB,rects){
+  if(!$("showTimePrice")||!$("showTimePrice").checked||!TP_FLAGS.length) return;
+  const B=bw();
+  ctx.save();
+  for(const f of TP_FLAGS){
+    if(f.i1<iA-2 || f.i0>iB+2) continue;
+    const x0=Math.max(1, xOf(Math.max(f.i0, iA-1))-B/2);
+    const x1=Math.min(L.x1-1, xOf(Math.min(f.i1, iB+1))+B/2);
+    let y1=yOf(f.zoneHi), y2=yOf(f.zoneLo);
+    if(y2<y1){ const t=y1; y1=y2; y2=t; }
+    if(y2-y1<4){ const m=(y1+y2)/2; y1=m-2; y2=m+2; }
+    // clip to main pane
+    const yy1=Math.max(L.top+1,y1), yy2=Math.min(L.mainB-1,y2);
+    if(yy2<=yy1 || x1<=x0) continue;
+    ctx.fillStyle = f.future ? "rgba(255,180,40,0.16)" : "rgba(255,170,0,0.28)";
+    ctx.strokeStyle = f.future ? "rgba(200,120,0,0.85)" : "rgba(180,100,0,0.95)";
+    ctx.lineWidth=1.5;
+    ctx.setLineDash(f.future?[5,4]:[]);
+    ctx.fillRect(x0,yy1,x1-x0,yy2-yy1);
+    ctx.strokeRect(x0+0.5,yy1+0.5,x1-x0-1,yy2-yy1-1);
+    ctx.setLineDash([]);
+    // peak marker (diamond)
+    const px=xOf(Math.min(Math.max(f.peakI,iA),iB));
+    const py=yOf(0.5*(f.zoneLo+f.zoneHi));
+    const r=5;
+    ctx.fillStyle = f.future ? "#e09000" : "#c06000";
+    ctx.beginPath();
+    ctx.moveTo(px,py-r); ctx.lineTo(px+r,py); ctx.lineTo(px,py+r); ctx.lineTo(px-r,py); ctx.closePath();
+    ctx.fill();
+    // label
+    ctx.font="bold 11px Tahoma, Arial"; ctx.textAlign="left"; ctx.textBaseline="bottom";
+    let txt=f.label;
+    if(f.outcome===true) txt += "  ✓ pivot";
+    else if(f.outcome===false) txt += "  ✗ no pivot";
+    const tw=ctx.measureText(txt).width;
+    let lx=x0+4, ly=Math.max(L.top+14, yy1-3);
+    if(ly-12<L.top) ly=Math.min(L.mainB-4, yy2+14);
+    ctx.fillStyle="rgba(40,24,0,0.82)"; ctx.fillRect(lx-2, ly-12, Math.min(tw+6, L.x1-lx), 13);
+    ctx.fillStyle="#ffe7a0"; ctx.fillText(txt.length>90?txt.slice(0,87)+"...":txt, lx, ly);
+    if(rects) rects.push({x0:lx,x1:lx+tw,y0:ly-12,y1:ly});
+  }
+  ctx.restore();
+}
+
 function computeMA(){
   // EMA seeded with the SMA of the first len closes; alpha = 2/(len+1).
   return MA_DEF.map(m=>{ const a=new Array(D.n).fill(null); const k=2/(m.len+1); let s=0, e=null;
@@ -538,7 +709,11 @@ function recompute(){
   LV=computeLevels();
   ZN=computeZones(visibleLevels().filter(v=>!v.hit));
   TP=computeTime();
-  TP.hist=computeTimeHistory();
+  // Time+Price needs walk-forward hist even if the hist checkbox is off
+  if($("showTimePrice")&&$("showTimePrice").checked&&(!$("dtpHist")||!$("dtpHist").checked)){
+    const was=$("dtpHist").checked; $("dtpHist").checked=true; TP.hist=computeTimeHistory(); $("dtpHist").checked=was;
+  } else TP.hist=computeTimeHistory();
+  computeTimePriceFlags();
   MA=computeMA();
   fillTables();
   draw();
@@ -742,6 +917,9 @@ function draw(){
   if(ipoMissing()){ ctx.font="bold 16px Tahoma, Arial"; ctx.textAlign="center"; ctx.textBaseline="middle"; const nx=L.x1/2, ny=(L.top+L.mainB)/2, nw=ctx.measureText("No IPO data").width;
     ctx.fillStyle="rgba(255,255,255,0.85)"; ctx.fillRect(nx-nw/2-6,ny-11,nw+12,22); ctx.fillStyle="#777"; ctx.fillText("No IPO data", nx, ny); }
 
+  // Time+Price royal flags (gold time×price boxes) — inside main-pane clip
+  drawTimePriceFlags(iA,iB,rects);
+
   // crosshair
   if(hover && hover.y>=L.top && hover.y<=L.mainB){
     ctx.strokeStyle="#888"; ctx.lineWidth=0.7; ctx.setLineDash([2,2]);
@@ -870,6 +1048,10 @@ function fillTables(){
   rows.sort((a,b)=>b[0].h-a[0].h);
   const exN=P.filter(p=>DTP_EX.has(p.date)).length;
   $("tblTime").innerHTML = `<tr><th class=l>Date</th><th class=l>Turn</th><th>Strength</th><th class=l>Projections (±band)${exN?` · ${exN} pivot(s) excluded`:""}</th></tr>` + rows.slice(0,10).map(([q,k])=>`<tr><td class=l>${dtpDateLbl(q)}</td><td class=l>${k}</td><td>${Math.round(q.h*100)}%</td><td class=l>${q.src.join("<br>")}</td></tr>`).join("");
+  if($("tblTimePrice")){
+    const fr=TP_FLAGS||[];
+    $("tblTimePrice").innerHTML = `<tr><th class=l>When</th><th class=l>Turn</th><th class=l>Window</th><th class=l>Zone</th><th>Str</th><th class=l>Outcome</th></tr>` + (fr.length? fr.map(f=>`<tr><td class=l>${f.future?"watch":"past"}</td><td class=l>${f.kind}</td><td class=l>${tpDateShort(f.date0)}–${tpDateShort(f.date1)}</td><td class=l>${f.zoneLabel} (${f.zoneN})</td><td>${Math.round(f.peakS*100)}%</td><td class=l>${f.outcome===true?"✓ pivot "+(f.outcomeDate?dtLabel(f.outcomeDate):""):f.outcome===false?"✗ no pivot":"—"}</td></tr>`).join("") : `<tr><td class=l colspan=6>${$("showTimePrice")&&$("showTimePrice").checked?"No confluence flags in view":"Enable Time+Price"}</td></tr>`);
+  }
   $("tblPiv").innerHTML = `<tr><th class=l>Date</th><th class=l>Kind</th><th>Price</th><th>Chg</th><th>${D.tf==="1wk"?"Wk":"TB"}</th><th class=l title="Click a pivot label on the chart to include/exclude it from the DTP">DTP</th></tr>` + P.slice(-14).reverse().map(p=>`<tr><td class=l>${dtLabel(p.date)}${p.tent?" (tent.)":""}</td><td class=l>${p.kind}</td><td>${fmt(p.price)}</td><td>${p.chg==null?"":fmt(p.chg)}</td><td>${p.tb??""}</td><td class=l>${p.tent?"–":(DTP_EX.has(p.date)?"excluded":"used")}</td></tr>`).join("");
   $("tblLv").innerHTML = "<tr><th>Price</th><th class=l>Type</th><th class=l>Swing</th></tr>" + [...v].sort((a,b)=>b.price-a.price).map(x=>`<tr><td style="color:${lvColor(x)}">${fmt(x.price)}</td><td class=l>${x.type==="EX"?"EX Ret":x.type} ${x.r.toFixed(3)}${x.hit?" (hit)":""}${x.held?` (held at ${dtLabel(x.heldAt)})`:""}</td><td class=l>${x.desc}</td></tr>`).join("");
 }
@@ -916,11 +1098,13 @@ async function load(){
     layout(); resetView(); recompute();
     setStatus(`${j.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones · ${j.source==="fmp"?"FMP":"Yahoo"}`);
     $("ipoManual").value = ipoManualVal() ?? ""; ipoUI(); if($("ipoOn").checked) ipoFetch();
-    save(); const u=new URL(location.href); u.searchParams.set("t",raw.toUpperCase()); u.searchParams.set("tf",D.tf); history.replaceState(null,"",u);
+    save(); const u=new URL(location.href); u.searchParams.set("t",raw.toUpperCase()); u.searchParams.set("tf",D.tf);
+    if($("showTimePrice")&&$("showTimePrice").checked) u.searchParams.set("tp","1"); else u.searchParams.delete("tp");
+    history.replaceState(null,"",u);
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
 
-const KEYS=["propAutoMode","propBAnch","tdPts","tdPtsLvl","tdTrue","ipoOn","ipoStep","ipoBelow","propR","propBasis","propFull","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","dtpHist","dtpHistLB","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
+const KEYS=["propAutoMode","propBAnch","tdPts","tdPtsLvl","tdTrue","ipoOn","ipoStep","ipoBelow","propR","propBasis","propFull","ticker","tf","period","swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","dtpHist","dtpHistLB","showTimePrice","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"];
 function save(){ const o={v:3}; for(const k of KEYS){ const el=$(k); o[k]= el.type==="checkbox"? el.checked : el.value; } try{ localStorage.setItem("ftp2",JSON.stringify(o)); }catch(_){} }
 function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{}"); }catch(_){}
   if(o.v!==3){ delete o.dtpMin; delete o.band; delete o.maxLv; } // DTP defaults changed (fitted model)
@@ -929,7 +1113,11 @@ function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{
   fillPeriods(tf, (o.tf===tf)? o.period : null);
   for(const k of KEYS){ if(k==="tf"||k==="period"||!(k in o)) continue; const el=$(k); if(el.type==="checkbox") el.checked=o[k]; else el.value=o[k]; }
   if(o.tf!==tf || !("tol" in o)) $("tol").value = ({"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05})[tf] ?? 0.25;
-  const t=q.get("t"); if(t) $("ticker").value=t; }
+  const t=q.get("t"); if(t) $("ticker").value=t;
+  // Scanner / deep-link: ?tp=1 forces Time+Price on; ?tp=0 forces off
+  if(q.get("tp")==="1"||q.get("tp")==="true") $("showTimePrice").checked=true;
+  if(q.get("tp")==="0"||q.get("tp")==="false") $("showTimePrice").checked=false;
+}
 
 // ---------- IPO grid ----------
 // Plain horizontal lines at ipo + k·(mult·ipo) for integer k (k<0 only when "Below" is ticked, price must stay > 0).
@@ -1277,7 +1465,8 @@ $("ticker").addEventListener("keydown",(e)=>{ if(e.key==="Enter") load(); });
 $("period").onchange=load;
 const TOL_DEF={"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05};
 $("tf").onchange=()=>{ const tf=$("tf").value; fillPeriods(tf, null); $("tol").value=TOL_DEF[tf]??0.25; load(); };
-for(const k of ["swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
+for(const k of ["swing","depth","maxLv","tol","band","dtpMin","dtpUnit","dtpStart","showRet","showEx","showApp","showZones","showMA","showPiv","showAll","appAll","showTimePrice","dtpTarget","target"]){ $(k).addEventListener(k==="target"?"input":"change",()=>{ save(); recompute(); if(D) setStatus(`${D.ticker} · ${D.n} ${TFS[D.tf].name} bars · last ${D.dates[D.n-1]} · ${P.length} pivots · ${visibleLevels().length} levels · ${ZN.length} zones`); }); }
+$("showTimePrice").addEventListener("change",()=>{ const u=new URL(location.href); if($("showTimePrice").checked) u.searchParams.set("tp","1"); else u.searchParams.delete("tp"); history.replaceState(null,"",u); });
 $("dtpHist").onchange=()=>{ save(); DTP_HIST_CACHE=null; if($("dtpHist").checked){ const before=$("period").value; dtpEnsurePeriod(); if($("period").value!==before){ load(); return; } resetView(); } recompute(); };
 $("dtpHistLB").onchange=()=>{ save(); DTP_HIST_CACHE=null; const before=$("period").value; dtpEnsurePeriod(); if($("period").value!==before){ load(); return; } if($("dtpHist").checked) resetView(); recompute(); };
 $("ipoOn").onchange=ipoChange; $("ipoStep").addEventListener("change",()=>{ save(); draw(); }); $("ipoBelow").onchange=()=>{ save(); draw(); };
