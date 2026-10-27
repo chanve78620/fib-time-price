@@ -1,0 +1,127 @@
+Time + Price Scanner – Oct 27, 2026
+Universe: 540 tickers
+In window now: 21  |  Upcoming: 38  |  LOW: 22  |  HIGH: 37
+
+Page: https://cursor.com/canvas/store-14b6a13c-f794-4d04-bcfe-d0893df95e28/bf0e6b89-7903-4f36-a2b0-a4f0c4e52937
+
+=== In window now ===
+  AES     HIGH  2026-10-26 → 2026-10-27  zone 15.04-15.07  close 15.03  dist -0.18%
+         https://fib-time-price.onrender.com/?t=AES&tf=1d&tp=1
+  BA      LOW   2026-10-26               zone 180.50-180.69  close 168.18  dist -6.87%
+         https://fib-time-price.onrender.com/?t=BA&tf=1d&tp=1
+  BF-B    LOW   2026-10-27               zone 28.39-28.42  close 28.51  dist +0.36%
+         https://fib-time-price.onrender.com/?t=BF-B&tf=1d&tp=1
+  DLR     HIGH  2026-10-23               zone 178.21-178.25  close 179.01  dist +0.44%
+         https://fib-time-price.onrender.com/?t=DLR&tf=1d&tp=1
+  DOC     HIGH  2026-10-27               zone 19.62  close 19.02  dist -3.03%
+         https://fib-time-price.onrender.com/?t=DOC&tf=1d&tp=1
+  FRT     HIGH  2026-10-23               zone 109.90-110.14  close 109.67  dist -0.32%
+         https://fib-time-price.onrender.com/?t=FRT&tf=1d&tp=1
+  GS      HIGH  2026-10-23 → 2026-10-26  zone 913.39-915.60  close 911.77  dist -0.30%
+         https://fib-time-price.onrender.com/?t=GS&tf=1d&tp=1
+  GWW     HIGH  2026-10-27               zone 1372-1373  close 1,342.7  dist -2.17%
+         https://fib-time-price.onrender.com/?t=GWW&tf=1d&tp=1
+  HBAN    HIGH  2026-10-23               zone 15.90-15.92  close 15.71  dist -1.28%
+         https://fib-time-price.onrender.com/?t=HBAN&tf=1d&tp=1
+  ITW     HIGH  2026-10-27               zone 280.78-280.94  close 275.93  dist -1.76%
+         https://fib-time-price.onrender.com/?t=ITW&tf=1d&tp=1
+  MAA     HIGH  2026-10-23               zone 122.08-122.27  close 118.75  dist -2.81%
+         https://fib-time-price.onrender.com/?t=MAA&tf=1d&tp=1
+  NUE     HIGH  2026-10-23               zone 275.39-275.88  close 270.79  dist -1.76%
+         https://fib-time-price.onrender.com/?t=NUE&tf=1d&tp=1
+  PNC     HIGH  2026-10-23               zone 227.73-228.03  close 227.54  dist -0.15%
+         https://fib-time-price.onrender.com/?t=PNC&tf=1d&tp=1
+  QCOM    HIGH  2026-10-23 → 2026-10-26  zone 184.03-184.33  close 184.17  dist -0.00%
+         https://fib-time-price.onrender.com/?t=QCOM&tf=1d&tp=1
+  RL      HIGH  2026-10-27               zone 393.49-394.01  close 391.25  dist -0.64%
+         https://fib-time-price.onrender.com/?t=RL&tf=1d&tp=1
+  SPX     LOW   2026-10-27               zone 7603-7609  close 7,722.6  dist +1.54%
+         https://fib-time-price.onrender.com/?t=SPX&tf=1d&tp=1
+  SPY     LOW   2026-10-27               zone 756.45-758.09  close 769.66  dist +1.64%
+         https://fib-time-price.onrender.com/?t=SPY&tf=1d&tp=1
+  SW      HIGH  2026-10-27               zone 42.78-42.87  close 42.54  dist -0.68%
+         https://fib-time-price.onrender.com/?t=SW&tf=1d&tp=1
+  TFC     HIGH  2026-10-23 → 2026-10-26  zone 49.28-49.30  close 48.54  dist -1.52%
+         https://fib-time-price.onrender.com/?t=TFC&tf=1d&tp=1
+  TRGP    HIGH  2026-10-26               zone 306.66-306.90  close 302.61  dist -1.36%
+         https://fib-time-price.onrender.com/?t=TRGP&tf=1d&tp=1
+  URI     HIGH  2026-10-22 → 2026-10-23  zone 1150  close 1,162.0  dist +1.01%
+         https://fib-time-price.onrender.com/?t=URI&tf=1d&tp=1
+
+=== Upcoming ===
+  AFL     LOW   2026-10-30               zone 119.25-119.37  close 121.99  dist +2.25%
+         https://fib-time-price.onrender.com/?t=AFL&tf=1d&tp=1
+  AMP     HIGH  2026-10-28               zone 504.46-504.70  close 492.85  dist -2.33%
+         https://fib-time-price.onrender.com/?t=AMP&tf=1d&tp=1
+  AMZN    LOW   2026-10-28               zone 243.86-244.05  close 253.10  dist +3.75%
+         https://fib-time-price.onrender.com/?t=AMZN&tf=1d&tp=1
+  ARKK    LOW   2026-10-28 → 2026-10-29  zone 78.41-78.56  close 84.78  dist +8.02%
+         https://fib-time-price.onrender.com/?t=ARKK&tf=1d&tp=1
+  BAX     LOW   2026-10-30 → 2026-11-02  zone 23.29-23.34  close 24.92  dist +6.88%
+         https://fib-time-price.onrender.com/?t=BAX&tf=1d&tp=1
+  BKR     HIGH  2026-10-30               zone 59.75-59.87  close 59.00  dist -1.35%
+         https://fib-time-price.onrender.com/?t=BKR&tf=1d&tp=1
+  CHRW    LOW   2026-10-28 → 2026-10-29  zone 135.12-135.20  close 143.59  dist +6.24%
+         https://fib-time-price.onrender.com/?t=CHRW&tf=1d&tp=1
+  CRM     LOW   2026-10-30 → 2026-11-02  zone 236.08-236.35  close 240.89  dist +1.98%
+         https://fib-time-price.onrender.com/?t=CRM&tf=1d&tp=1
+  CSX     HIGH  2026-10-28 → 2026-10-29  zone 55.97-56.08  close 52.27  dist -6.71%
+         https://fib-time-price.onrender.com/?t=CSX&tf=1d&tp=1
+  DOC     HIGH  2026-10-28 → 2026-10-29  zone 19.62  close 19.02  dist -3.03%
+         https://fib-time-price.onrender.com/?t=DOC&tf=1d&tp=1
+  DTE     LOW   2026-10-29               zone 130.44-130.60  close 132.67  dist +1.65%
+         https://fib-time-price.onrender.com/?t=DTE&tf=1d&tp=1
+  DVA     HIGH  2026-10-30               zone 193.82-194.26  close 181.69  dist -6.36%
+         https://fib-time-price.onrender.com/?t=DVA&tf=1d&tp=1
+  EXE     HIGH  2026-10-29 → 2026-10-30  zone 96.90-96.96  close 94.62  dist -2.38%
+         https://fib-time-price.onrender.com/?t=EXE&tf=1d&tp=1
+  FERG    HIGH  2026-10-28 → 2026-10-29  zone 238.83-238.96  close 229.56  dist -3.91%
+         https://fib-time-price.onrender.com/?t=FERG&tf=1d&tp=1
+  GEHC    HIGH  2026-10-28               zone 72.80-72.94  close 71.11  dist -2.42%
+         https://fib-time-price.onrender.com/?t=GEHC&tf=1d&tp=1
+  HUM     LOW   2026-10-29               zone 405.66-406.66  close 414.85  dist +2.14%
+         https://fib-time-price.onrender.com/?t=HUM&tf=1d&tp=1
+  JBHT    LOW   2026-10-29 → 2026-10-30  zone 219.54-219.72  close 231.95  dist +5.61%
+         https://fib-time-price.onrender.com/?t=JBHT&tf=1d&tp=1
+  LULU    HIGH  2026-10-28 → 2026-10-29  zone 106.40-106.47  close 104.59  dist -1.74%
+         https://fib-time-price.onrender.com/?t=LULU&tf=1d&tp=1
+  LVS     HIGH  2026-10-28 → 2026-10-29  zone 40.78-40.79  close 36.12  dist -11.44%
+         https://fib-time-price.onrender.com/?t=LVS&tf=1d&tp=1
+  MCO     HIGH  2026-10-30 → 2026-11-02  zone 504.48-505.06  close 474.00  dist -6.09%
+         https://fib-time-price.onrender.com/?t=MCO&tf=1d&tp=1
+  MTB     HIGH  2026-10-28 → 2026-10-29  zone 226.19-226.50  close 221.31  dist -2.23%
+         https://fib-time-price.onrender.com/?t=MTB&tf=1d&tp=1
+  NEE     HIGH  2026-10-28               zone 84.66-84.78  close 82.42  dist -2.71%
+         https://fib-time-price.onrender.com/?t=NEE&tf=1d&tp=1
+  PFG     HIGH  2026-10-28               zone 114.10-114.31  close 111.98  dist -1.95%
+         https://fib-time-price.onrender.com/?t=PFG&tf=1d&tp=1
+  PLTR    LOW   2026-10-28 → 2026-10-29  zone 183.03-183.17  close 198.73  dist +8.54%
+         https://fib-time-price.onrender.com/?t=PLTR&tf=1d&tp=1
+  PPL     LOW   2026-10-30               zone 33.85-33.91  close 35.18  dist +3.83%
+         https://fib-time-price.onrender.com/?t=PPL&tf=1d&tp=1
+  QQQ     LOW   2026-10-28               zone 694.43-694.45  close 721.25  dist +3.86%
+         https://fib-time-price.onrender.com/?t=QQQ&tf=1d&tp=1
+  REG     HIGH  2026-10-28               zone 75.22-75.36  close 74.28  dist -1.34%
+         https://fib-time-price.onrender.com/?t=REG&tf=1d&tp=1
+  RL      HIGH  2026-10-28 → 2026-10-29  zone 393.49-394.01  close 391.25  dist -0.64%
+         https://fib-time-price.onrender.com/?t=RL&tf=1d&tp=1
+  ROL     HIGH  2026-10-28               zone 35.84-35.92  close 34.01  dist -5.22%
+         https://fib-time-price.onrender.com/?t=ROL&tf=1d&tp=1
+  SMCI    LOW   2026-10-30 → 2026-11-02  zone 26.87-26.88  close 35.09  dist +30.55%
+         https://fib-time-price.onrender.com/?t=SMCI&tf=1d&tp=1
+  SNA     HIGH  2026-10-28               zone 372.65-373.21  close 357.51  dist -4.14%
+         https://fib-time-price.onrender.com/?t=SNA&tf=1d&tp=1
+  SOLV    LOW   2026-10-29               zone 81.09-81.27  close 82.98  dist +2.21%
+         https://fib-time-price.onrender.com/?t=SOLV&tf=1d&tp=1
+  SPX     LOW   2026-10-28               zone 7580-7596  close 7,722.6  dist +1.78%
+         https://fib-time-price.onrender.com/?t=SPX&tf=1d&tp=1
+  SPY     LOW   2026-10-28               zone 756.45-758.09  close 769.66  dist +1.64%
+         https://fib-time-price.onrender.com/?t=SPY&tf=1d&tp=1
+  STLD    LOW   2026-10-30               zone 230.26-230.51  close 246.80  dist +7.13%
+         https://fib-time-price.onrender.com/?t=STLD&tf=1d&tp=1
+  SW      HIGH  2026-10-28 → 2026-10-29  zone 42.78-42.87  close 42.54  dist -0.68%
+         https://fib-time-price.onrender.com/?t=SW&tf=1d&tp=1
+  VRSN    LOW   2026-10-28               zone 288.65-289.13  close 304.04  dist +5.25%
+         https://fib-time-price.onrender.com/?t=VRSN&tf=1d&tp=1
+  WFC     HIGH  2026-10-28               zone 86.55-86.68  close 82.66  dist -4.57%
+         https://fib-time-price.onrender.com/?t=WFC&tf=1d&tp=1

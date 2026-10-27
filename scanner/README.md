@@ -46,3 +46,11 @@ Canvas `Table` cells accept `ReactNode`, so this is a real clickable link (plain
 - FMP `stable/sp500-constituent` + `stable/nasdaq-constituent` (cached; seed fallback if FMP fails)
 - ETFs: SPY QQQ IWM DIA GLD SLV GDX GDXJ TLT XLE XLF XLK XLV XLI XLY XLP XLU XLB XLRE SMH ARKK
 - Index: SPX (FMP `^GSPC`; chart link uses `t=SPX`)
+
+## Email report
+
+```bash
+.venv/bin/python scanner/email_report.py   # writes scanner/out/email.{html,txt,meta.json}
+```
+
+Subject: `Time + Price Scanner – <Mon D, YYYY>`. HTML has In window now / Upcoming tables with ticker chart links (`?tp=1`) and a link to the Page. Default recipient in meta: `billy.brandenberger@rbc.com`. Send via the connected Gmail connector (`send_email` with `htmlBody` + plain `body`).
