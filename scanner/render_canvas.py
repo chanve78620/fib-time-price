@@ -50,6 +50,15 @@ function dist(x: number | null): string { if (x == null || Number.isNaN(x)) retu
 function kind(k: string): string { return k === "l" || k === "low" ? "LOW" : "HIGH"; }
 function statusOf(s: string): string { return s === "n" || s === "now" ? "now" : "upcoming"; }
 
+/** TableCell accepts ReactNode — ticker-only anchor; target=_blank for new tab. */
+function tickerLink(t: string) {
+  return (
+    <a href={url(t)} target="_blank" rel="noopener noreferrer">
+      {t}
+    </a>
+  );
+}
+
 export default function App() {
   const [status, setStatus] = useState<Status>("all");
   const [kindF, setKindF] = useState<Kind>("all");
@@ -68,11 +77,11 @@ export default function App() {
   }, [status, kindF, sort]);
   const nowRows = filtered.filter((x) => statusOf(x.s) === "now");
   const upRows = filtered.filter((x) => statusOf(x.s) === "upcoming");
-  const cols = ["Ticker chart", "Turn", "Window", "Zone", "Close", "Dist %", "Strength", "1Y hit"];
-  const cells = (x: R) => [x.t + "  " + url(x.t), kind(x.k), x.a + " → " + x.b, x.z, String(x.c), dist(x.d), Math.round((x.p ?? 0) * 100) + "%", pct(x.h)];
+  const cols = ["Ticker", "Turn", "Window", "Zone", "Close", "Dist %", "Strength", "1Y hit"];
+  const cells = (x: R) => [tickerLink(x.t), kind(x.k), x.a + " → " + x.b, x.z, String(x.c), dist(x.d), Math.round((x.p ?? 0) * 100) + "%", pct(x.h)];
   return (
-    <Page title="Time + Price Scanner" width="wide" summary={`Daily Boroden-style royal setups (DTP ≥90% into a Fib zone). Scan ${META.scan_date} · ${META.universe_size} tickers. Click a chart URL — opens with Time+Price on (?tp=1).`}>
-      <Callout tone="info" lead="How to read this">In window now = time and price lined up on the latest bar (±Band). Upcoming = strong time cluster within the next 3 trading days. Each ticker cell links the live chart in a new tab.</Callout>
+    <Page title="Time + Price Scanner" width="wide" summary={`Daily Boroden-style royal setups (DTP ≥90% into a Fib zone). Scan ${META.scan_date} · ${META.universe_size} tickers. Click a ticker — chart opens in a new tab with Time+Price on (?tp=1).`}>
+      <Callout tone="info" lead="How to read this">In window now = time and price lined up on the latest bar (±Band). Upcoming = strong time cluster within the next 3 trading days. Each ticker is a link to the live chart (new tab).</Callout>
       <Metrics metrics={[{ value: String(META.n_now), label: "In window now" }, { value: String(META.n_upcoming), label: "Upcoming (≤3d)" }, { value: String(META.n_low), label: "Possible LOWs" }, { value: String(META.n_high), label: "Possible HIGHs" }]} />
       <Section heading="Filters">
         <Text>{`Scan ${META.scanned_at ?? META.scan_date}${META.runtime_sec != null ? ` · ${META.runtime_sec}s` : ""}. Showing ${filtered.length}/${ROWS.length}.`}</Text>
@@ -94,7 +103,7 @@ export default function App() {
         <Section heading="No matches"><Text>No tickers matched the current filters for this scan date.</Text></Section>
       ) : null}
       <Section heading="Refresh">
-        <Text>`cd /workspace/fib-time-price && .venv/bin/python scanner/scan.py && .venv/bin/python scanner/render_canvas.py` then ask Grok Bot to update this Page (same canvas id). Charts: https://fib-time-price.onrender.com/?t=TICKER&tf=1d&tp=1</Text>
+        <Text>{`cd /workspace/fib-time-price && .venv/bin/python scanner/scan.py && .venv/bin/python scanner/render_canvas.py then ask Grok Bot to update this Page (same canvas id). Charts: https://fib-time-price.onrender.com/?t=TICKER&tf=1d&tp=1`}</Text>
       </Section>
     </Page>
   );

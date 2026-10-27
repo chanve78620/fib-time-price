@@ -23,11 +23,13 @@ Then ask Grok Bot: *update the Time + Price Scanner Page from `scanner/out/canva
 
 ## Chart links
 
-Every ticker opens in a **new tab**:
+Each table ticker cell is an `<a>` (ReactNode `TableCell`) whose label is **only the ticker**:
 
-`https://fib-time-price.onrender.com/?t=<TICKER>&tf=1d&tp=1`
+```html
+<a href="https://fib-time-price.onrender.com/?t=<TICKER>&tf=1d&tp=1" target="_blank" rel="noopener noreferrer">TICKER</a>
+```
 
-(`tp=1` forces the Time+Price toggle on after deploy of main.)
+Canvas `Table` cells accept `ReactNode`, so this is a real clickable link (plain ticker+URL strings do not auto-link in tables). `target="_blank"` requests a new tab; the host honors it for external https links.
 
 ## Outputs
 
