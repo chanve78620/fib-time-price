@@ -146,7 +146,7 @@
       <span style="color:#2632b8">Ret</span> = retracement of a swing (0.382, 0.5, 0.618, 0.786);
       <span style="color:#0a7a1f">EX Ret</span> = external retracement past the swing start (1.272, 1.618, 2.618);
       <span style="color:#d01010">App</span> = alternate price projection, swing A→B length projected from C (0.618, 1.000, 1.618).
-      Only levels not yet traded through since their anchor pivot are drawn (tick <i>Hit lvls</i> to show all). A wick through a level counts. Levels just beyond the most recent pivot’s extreme that price came near but never traded through (within one average bar range; a low exactly at the level counts as a test) are marked <b>held</b>: bolder, labelled “held”, with a dot on the pivot bar. Lines start at the anchor pivot bar. Two or more levels inside <i>Zone %</i> of price form a bold zone label (e.g. 7703-16).</p>
+      Only levels not yet traded through since their anchor pivot are drawn (tick <i>Hit lvls</i> to show all). A wick through a level counts. Levels just beyond the most recent pivot’s extreme that price came near but never traded through (within one average bar range; a low exactly at the level counts as a test) are marked <b>held</b>: bolder, labelled “held”, with a dot on the pivot bar. Lines start at the anchor pivot bar. Two or more levels inside <i>Zone %</i> of price form a bold zone label (e.g. 7703-16). Hover a level (line, label, or table row) to draw a red line on the source swing it came from; tap to pin on touch.</p>
     <p><b>Time+Price:</b> a “royal” setup flag when a strong DTP cluster (normalized ≥ 0.9, within ±Band) coincides with price trading into an active Fib zone — support for LOW timing, resistance for HIGH. Gold/amber box marks the intersecting time×price rectangle; a diamond marks the peak bar. Past flags walk forward with no lookahead and show whether a matching pivot formed in the window (✓/✗). Upcoming watches use live DTP peaks over active zones. Toggle via UI or <code>?tp=1</code> (scanner deep-links). Logic mirrors <code>fib_time_price/time_price_flag.py</code>.</p>
     <p><b>DTP time pane:</b> counts time projections landing on each bar, counted in <b>bars of the selected timeframe</b> (future slots skip weekends and main NYSE holidays; intraday US stocks/indexes use the 9:30–16:00 ET session, futures ≈ Sun 18:00–Fri 17:00 ET with the daily 17:00–18:00 break, crypto 24×7; half-days are not modeled): time retracements/extensions of prior swings (0.382–2.618), alternate time projections (A→B duration from C: 0.618, 1, 1.618) and same-kind cycles (low→low, high→high: 0.618–1.618). Bar height = number of projections coinciding. <i>Auto</i> targets the pivot the current swing is heading for. <b>DTP history</b> (on by default) walks the same rules forward under past bars: at each date only pivots already confirmed by then are used (no lookahead), so you can see how timing clusters lined up with actual tops and bottoms. Markers on the pane flag confirmed pivots; the optional hit-rate is the share of those pivots within ±Band bars of a top-decile cluster.</p>
     <p><b>Mouse:</b> wheel = zoom, drag = pan, Shift+wheel or drag on the price axis = vertical scale, double-click = reset. Touch: drag to pan, pinch to zoom.</p>
@@ -195,6 +195,9 @@ let PIVR = []; // drawn pivot-label rects (click toggles DTP inclusion) // time 
 let MA = [];
 const view = { right: 0, count: 72, yZoom: 1, yShift: 0 };
 let hover = null;
+let hoverLv = null;   // level under mouse (or sticky tap); red swing drawn from its source
+let hoverLvSticky = null; // touch: tap a level to pin, tap again/elsewhere to clear
+let LVR = [];           // hit regions for drawn level lines + labels
 
 // ---------- utils ----------
 // Dates are exchange-local wall-clock strings ("YYYY-MM-DD" or "YYYY-MM-DDTHH:MM"),
@@ -347,7 +350,7 @@ function computeLevels(){
     for(const [a,b] of [[c-2,c-1],[c-4,c-3]]){
       if(a<0) continue; const A=P[a],B=P[b]; const len=B.price-A.price;
       for(const r of ($("appAll").checked?APP_R:[1.0])){ const pr=C.price+r*len; if(pr<=0) continue;
-        add({price:pr,type:"App",r,from:A,anchor:C,desc:`${dtLabel(A.date)}→${dtLabel(B.date)} from ${dtLabel(C.date)}`}); }
+        add({price:pr,type:"App",r,from:A,thru:B,anchor:C,desc:`${dtLabel(A.date)}→${dtLabel(B.date)} from ${dtLabel(C.date)}`}); }
     }
   }
   // de-dupe near-identical
@@ -773,6 +776,36 @@ function lvColor(v){
   return ({0.618:"#e0406a",1:"#e01010",1.618:"#9b0000"})[v.r]||"#e01010";
 }
 function lvText(v){ return `${fmt(v.price)} ${v.type==="EX"?"EX Ret":v.type} ${v.r.toFixed(3)}`; }
+/** Source swing(s) a price level was derived from. Ret/EX: from→anchor; App: from→thru (A→B length). */
+function swingOf(v){
+  if(!v) return [];
+  if(v.type==="App" && v.from && v.thru) return [{a:v.from,b:v.thru}];
+  if(v.from && v.anchor) return [{a:v.from,b:v.anchor}];
+  return [];
+}
+function levelAt(x,y){
+  for(const r of LVR){ if(r.kind==="lab" && x>=r.x0 && x<=r.x1 && y>=r.y0 && y<=r.y1) return r.v; }
+  let best=null, bd=5;
+  for(const r of LVR){ if(r.kind==="line" && x>=r.x0-2 && x<=r.x1+2){ const d=Math.abs(y-r.y); if(d<=bd){ bd=d; best=r.v; } } }
+  return best;
+}
+function drawSwingHighlight(levels){
+  const arr = Array.isArray(levels) ? levels : (levels ? [levels] : []);
+  if(!arr.length) return;
+  const seen=new Set();
+  ctx.save();
+  ctx.strokeStyle="#e02020"; ctx.fillStyle="#e02020"; ctx.lineWidth=2.25; ctx.setLineDash([]);
+  for(const v of arr){
+    for(const {a,b} of swingOf(v)){
+      const key=a.date+"|"+b.date; if(seen.has(key)) continue; seen.add(key);
+      const x1=xOf(a.i), y1=yOf(a.price), x2=xOf(b.i), y2=yOf(b.price);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      for(const [x,y] of [[x1,y1],[x2,y2]]){ ctx.beginPath(); ctx.arc(x,y,4.5,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#e02020"; }
+    }
+  }
+  ctx.restore();
+}
 
 function draw(){
   layout();
@@ -840,7 +873,7 @@ function draw(){
   }
 
   // levels
-  const labs=[];
+  const labs=[]; LVR=[];
   for(const v of levels){
     const y=Math.round(yOf(v.price))+0.5; if(y<L.top||y>L.mainB) continue;
     const x=Math.max(2, xOf(v.start)-B/2);
@@ -848,7 +881,8 @@ function draw(){
     if(v.hit) ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(L.x1-2,y); ctx.stroke(); ctx.setLineDash([]);
     if(v.held){ const xh=xOf(v.heldI); ctx.fillStyle=lvColor(v); ctx.beginPath(); ctx.arc(xh,y,3,0,7); ctx.fill(); }
-    labs.push({y, txt:lvText(v)+(v.held?" held":""), col:lvColor(v)});
+    LVR.push({kind:"line", y, x0:x, x1:L.x1-2, v});
+    labs.push({y, txt:lvText(v)+(v.held?" held":""), col:lvColor(v), v});
   }
 
   drawProps(labs);
@@ -864,6 +898,9 @@ function draw(){
   }
   ctx.stroke();
 
+  // red source-swing for the hovered / sticky level (drawn over bars, under labels)
+  if(hoverLv) drawSwingHighlight(hoverLv);
+
   // level labels at right with collision avoidance
   labs.sort((a,b)=>a.y-b.y);
   placeLabels(labs, 11, L.top+12, L.mainB-2);
@@ -872,6 +909,7 @@ function draw(){
     ctx.fillStyle="rgba(255,255,255,0.85)"; ctx.fillRect(L.x1-6-tw-2, ly-11, tw+4, 11);
     ctx.fillStyle=lb.col; ctx.fillText(lb.txt, L.x1-6, ly+1);
     if(Math.abs(lb.ly-lb.y)>1.5){ ctx.strokeStyle=lb.col; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(L.x1-6-tw-3, ly-5); ctx.lineTo(L.x1-6-tw-12, lb.y); ctx.stroke(); }
+    if(lb.v) LVR.push({kind:"lab", x0:L.x1-6-tw-2, x1:L.x1-2, y0:ly-11, y1:ly, v:lb.v});
   }
 
   // pivot labels
@@ -1042,7 +1080,9 @@ function drawDaySeparators(iA,iB){
 // ---------- tables ----------
 function fillTables(){
   const v=visibleLevels();
-  $("tblZones").innerHTML = "<tr><th>Zone</th><th>#</th><th class=l>Levels</th></tr>" + [...ZN].sort((a,b)=>b.lo-a.lo).map(z=>`<tr><td><b>${z.label}</b></td><td>${z.n}</td><td class=l>${z.levels.map(lvText).join("; ")}</td></tr>`).join("");
+  const znSorted=[...ZN].sort((a,b)=>b.lo-a.lo);
+  $("tblZones").innerHTML = "<tr><th>Zone</th><th>#</th><th class=l>Levels</th></tr>" + znSorted.map((z,i)=>`<tr data-zn="${i}" style="cursor:pointer"><td><b>${z.label}</b></td><td>${z.n}</td><td class=l>${z.levels.map(lvText).join("; ")}</td></tr>`).join("");
+  $("tblZones")._znSorted = znSorted;
   const rows=[]; for(const se of TP.series){ const a=se.pts;
     a.forEach((q,j)=>{ const pv=a[j-1]&&a[j-1].t===q.t-1?a[j-1].v:0, nx=a[j+1]&&a[j+1].t===q.t+1?a[j+1].v:0; if(q.v>=pv && q.v>=nx) rows.push([q,se.kind]); }); }
   rows.sort((a,b)=>b[0].h-a[0].h);
@@ -1053,7 +1093,9 @@ function fillTables(){
     $("tblTimePrice").innerHTML = `<tr><th class=l>When</th><th class=l>Turn</th><th class=l>Window</th><th class=l>Zone</th><th>Str</th><th class=l>Outcome</th></tr>` + (fr.length? fr.map(f=>`<tr><td class=l>${f.future?"watch":"past"}</td><td class=l>${f.kind}</td><td class=l>${tpDateShort(f.date0)}–${tpDateShort(f.date1)}</td><td class=l>${f.zoneLabel} (${f.zoneN})</td><td>${Math.round(f.peakS*100)}%</td><td class=l>${f.outcome===true?"✓ pivot "+(f.outcomeDate?dtLabel(f.outcomeDate):""):f.outcome===false?"✗ no pivot":"—"}</td></tr>`).join("") : `<tr><td class=l colspan=6>${$("showTimePrice")&&$("showTimePrice").checked?"No confluence flags in view":"Enable Time+Price"}</td></tr>`);
   }
   $("tblPiv").innerHTML = `<tr><th class=l>Date</th><th class=l>Kind</th><th>Price</th><th>Chg</th><th>${D.tf==="1wk"?"Wk":"TB"}</th><th class=l title="Click a pivot label on the chart to include/exclude it from the DTP">DTP</th></tr>` + P.slice(-14).reverse().map(p=>`<tr><td class=l>${dtLabel(p.date)}${p.tent?" (tent.)":""}</td><td class=l>${p.kind}</td><td>${fmt(p.price)}</td><td>${p.chg==null?"":fmt(p.chg)}</td><td>${p.tb??""}</td><td class=l>${p.tent?"–":(DTP_EX.has(p.date)?"excluded":"used")}</td></tr>`).join("");
-  $("tblLv").innerHTML = "<tr><th>Price</th><th class=l>Type</th><th class=l>Swing</th></tr>" + [...v].sort((a,b)=>b.price-a.price).map(x=>`<tr><td style="color:${lvColor(x)}">${fmt(x.price)}</td><td class=l>${x.type==="EX"?"EX Ret":x.type} ${x.r.toFixed(3)}${x.hit?" (hit)":""}${x.held?` (held at ${dtLabel(x.heldAt)})`:""}</td><td class=l>${x.desc}</td></tr>`).join("");
+  const lvSorted=[...v].sort((a,b)=>b.price-a.price);
+  $("tblLv").innerHTML = "<tr><th>Price</th><th class=l>Type</th><th class=l>Swing</th></tr>" + lvSorted.map((x,i)=>`<tr data-lv="${i}" style="cursor:pointer"><td style="color:${lvColor(x)}">${fmt(x.price)}</td><td class=l>${x.type==="EX"?"EX Ret":x.type} ${x.r.toFixed(3)}${x.hit?" (hit)":""}${x.held?` (held at ${dtLabel(x.heldAt)})`:""}</td><td class=l>${x.desc}</td></tr>`).join("");
+  $("tblLv")._lvSorted = lvSorted;
 }
 
 // ---------- data ----------
@@ -1431,7 +1473,13 @@ cv.addEventListener("pointermove",(e)=>{ const r=cv.getBoundingClientRect(); con
     if(drag.axis){ view.yZoom=Math.max(0.2,drag.yZoom*Math.exp((drag.y-y)/150)); }
     else { view.right = drag.right - (x-drag.x)/bw(); const dy=y-drag.y; view.yShift = drag.yShift + dy/(L.mainB-L.top)*(Y.hi-Y.lo); clampView(); }
     hover=null; draw(); return; }
-  if(!D) return; cv.style.cursor = (!PICK && HANDLES.some(h=>Math.hypot(h.cx-x,h.cy-y)<=9)) ? "grab" : PIVR.some(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1) ? "pointer" : ""; hover={x,y,i:iOfX(x)}; draw(); showTip(x,y);
+  if(!D) return;
+  const overLv=levelAt(x,y);
+  const overPiv=PIVR.some(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
+  cv.style.cursor = (!PICK && HANDLES.some(h=>Math.hypot(h.cx-x,h.cy-y)<=9)) ? "grab" : (overLv||overPiv) ? "pointer" : "";
+  hover={x,y,i:iOfX(x)};
+  hoverLv = hoverLvSticky || overLv;
+  draw(); showTip(x,y);
 });
 let clickAt=null;
 function propDragTo(x,y){ // drag one pivot handle: snap to the nearest bar (x) and its high/low/close (role + basis)
@@ -1444,11 +1492,32 @@ function endPtr(e){
   if(e.type==="pointerup" && clickAt && ptrs.size===1 && D){ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top;
     if(Math.hypot(x-clickAt.x,y-clickAt.y)<5 && Date.now()-clickAt.t<600){ if(propClick(x,y)){ clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size===0) drag=null; return; }
       const h=PIVR.find(q=>x>=q.x0&&x<=q.x1&&y>=q.y0&&y<=q.y1);
-      if(h){ const k=h.p.date; if(DTP_EX.has(k)) DTP_EX.delete(k); else DTP_EX.add(k); saveEx(); recompute(); } } }
+      if(h){ const k=h.p.date; if(DTP_EX.has(k)) DTP_EX.delete(k); else DTP_EX.add(k); saveEx(); recompute(); }
+      else { const lv=levelAt(x,y);
+        if(lv){ const same=hoverLvSticky && hoverLvSticky.price===lv.price && hoverLvSticky.type===lv.type && hoverLvSticky.r===lv.r && hoverLvSticky.desc===lv.desc;
+          hoverLvSticky = same ? null : lv; hoverLv = hoverLvSticky || lv; draw(); }
+        else if(hoverLvSticky){ hoverLvSticky=null; hoverLv=null; draw(); } } } }
   clickAt=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch=null; if(ptrs.size===0) drag=null; }
 cv.addEventListener("pointerup",endPtr); cv.addEventListener("pointercancel",endPtr);
-cv.addEventListener("pointerleave",()=>{ hover=null; $("tip").style.display="none"; draw(); });
+cv.addEventListener("pointerleave",()=>{ hover=null; if(!hoverLvSticky) hoverLv=null; $("tip").style.display="none"; draw(); });
 cv.addEventListener("dblclick",()=>{ resetView(); draw(); });
+function bindLvTableHover(){
+  const tbl=$("tblLv"); if(!tbl || tbl._hovBound) return; tbl._hovBound=true;
+  tbl.addEventListener("mouseover",(e)=>{ const tr=e.target.closest("tr[data-lv]"); if(!tr||!tbl._lvSorted) return;
+    hoverLv = tbl._lvSorted[+tr.dataset.lv]; draw(); });
+  tbl.addEventListener("mouseout",(e)=>{ if(tbl.contains(e.relatedTarget)) return;
+    if(!hoverLvSticky){ hoverLv=null; draw(); } else { hoverLv=hoverLvSticky; draw(); } });
+  tbl.addEventListener("click",(e)=>{ const tr=e.target.closest("tr[data-lv]"); if(!tr||!tbl._lvSorted) return;
+    const lv=tbl._lvSorted[+tr.dataset.lv]; const same=hoverLvSticky===lv;
+    hoverLvSticky = same ? null : lv; hoverLv = hoverLvSticky; draw(); });
+  const tz=$("tblZones"); if(tz && !tz._hovBound){ tz._hovBound=true;
+    tz.addEventListener("mouseover",(e)=>{ const tr=e.target.closest("tr[data-zn]"); if(!tr||!tz._znSorted) return;
+      hoverLv = tz._znSorted[+tr.dataset.zn].levels; draw(); });
+    tz.addEventListener("mouseout",(e)=>{ if(tz.contains(e.relatedTarget)) return;
+      if(!hoverLvSticky){ hoverLv=null; draw(); } else { hoverLv=hoverLvSticky; draw(); } });
+  }
+}
+bindLvTableHover();
 function showTip(x,y){
   const tip=$("tip"); if(!D||y<L.dtpT||y>L.dtpB||x>L.x1){ tip.style.display="none"; return; }
   let best=null, bd=Math.max(4,bw()*0.4);
