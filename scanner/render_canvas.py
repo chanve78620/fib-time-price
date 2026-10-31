@@ -54,7 +54,7 @@ type R = { t: string; k: string; s: string; a: string; b: string; z: string; c: 
 const ROWS: R[] = __ROWS__;
 const META = __META__ as { scan_date: string; universe_size: number; n_now: number; n_upcoming: number; n_low: number; n_high: number; runtime_sec?: number; scanned_at?: string; n_earnings_flag?: number };
 
-const url = (t: string) => "https://fib-time-price.onrender.com/?t=" + t + "&tf=1d&tp=1";
+const url = (t: string) => "https://fib-time-price.onrender.com/?t=" + t + "&tf=1d&tp=1&bars=40";
 function pct(x: number | null): string { if (x == null || Number.isNaN(x)) return "—"; return (x * 100).toFixed(0) + "%"; }
 function dist(x: number | null): string { if (x == null || Number.isNaN(x)) return "—"; return (x >= 0 ? "+" : "") + x.toFixed(2) + "%"; }
 function kind(k: string): string { return k === "l" || k === "low" ? "LOW" : "HIGH"; }
@@ -135,7 +135,7 @@ export default function App() {
         <Section heading="No matches"><Text>No tickers matched the current filters for this scan date.</Text></Section>
       ) : null}
       <Section heading="Refresh">
-        <Text>{`cd /workspace/fib-time-price && .venv/bin/python scanner/scan.py && .venv/bin/python scanner/render_canvas.py then ask Grok Bot to update this Page (same canvas id). Charts: https://fib-time-price.onrender.com/?t=TICKER&tf=1d&tp=1`}</Text>
+        <Text>{`cd /workspace/fib-time-price && .venv/bin/python scanner/scan.py && .venv/bin/python scanner/render_canvas.py then ask Grok Bot to update this Page (same canvas id). Charts: https://fib-time-price.onrender.com/?t=TICKER&tf=1d&tp=1&bars=40`}</Text>
       </Section>
     </Page>
   );

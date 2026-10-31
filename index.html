@@ -1100,8 +1100,11 @@ function fillTables(){
 
 // ---------- data ----------
 function setStatus(t,err){ const s=$("status"); s.textContent=t; s.className=err?"err":""; }
+function urlBars(){ const n=parseInt(new URL(location.href).searchParams.get("bars")||"",10); return (n>0 && n<10000)? n : null; }
 function resetView(){ if(!D) return; const fut = L.W && L.W<700 ? 8 : 12;
-  if($("dtpHist") && $("dtpHist").checked){ const a=dtpHistLookbackI(); const vis=Math.max(60, D.n-1-a+1); view.count=vis+fut; view.right=D.n-1+fut; }
+  const bars=urlBars();
+  if(bars!=null){ const vis=Math.min(bars, D.n); view.count=vis+fut; view.right=D.n-1+fut; }
+  else if($("dtpHist") && $("dtpHist").checked){ const a=dtpHistLookbackI(); const vis=Math.max(60, D.n-1-a+1); view.count=vis+fut; view.right=D.n-1+fut; }
   else { const vis = L.W && L.W<700 ? 32 : 45; view.count = vis + fut; view.right = D.n-1+fut; }
   view.yZoom=1; view.yShift=0; }
 
@@ -1142,6 +1145,11 @@ async function load(){
     $("ipoManual").value = ipoManualVal() ?? ""; ipoUI(); if($("ipoOn").checked) ipoFetch();
     save(); const u=new URL(location.href); u.searchParams.set("t",raw.toUpperCase()); u.searchParams.set("tf",D.tf);
     if($("showTimePrice")&&$("showTimePrice").checked) u.searchParams.set("tp","1"); else u.searchParams.delete("tp");
+    // keep deep-link zoom (?bars=N) and load-window (?period=6mo) across ticker changes
+    const barsQ=urlBars(); if(barsQ!=null) u.searchParams.set("bars",String(barsQ)); else u.searchParams.delete("bars");
+    const perQ=new URL(location.href).searchParams.get("period");
+    if(perQ && (TFS[D.tf].periods||[]).some(p=>p[0]===perQ)) u.searchParams.set("period",perQ);
+    else if(perQ) u.searchParams.delete("period");
     history.replaceState(null,"",u);
   }catch(e){ setStatus("Failed: "+e.message, true); }
 }
@@ -1152,13 +1160,15 @@ function restore(){ let o={}; try{ o=JSON.parse(localStorage.getItem("ftp2")||"{
   if(o.v!==3){ delete o.dtpMin; delete o.band; delete o.maxLv; } // DTP defaults changed (fitted model)
   const q=new URL(location.href).searchParams;
   let tf=q.get("tf")||o.tf||"1d"; if(!TFS[tf]) tf="1d"; $("tf").value=tf;
-  fillPeriods(tf, (o.tf===tf)? o.period : null);
+  // ?period=6mo|1y|… selects the History load window (same as the Period dropdown)
+  fillPeriods(tf, q.get("period") || ((o.tf===tf)? o.period : null));
   for(const k of KEYS){ if(k==="tf"||k==="period"||!(k in o)) continue; const el=$(k); if(el.type==="checkbox") el.checked=o[k]; else el.value=o[k]; }
   if(o.tf!==tf || !("tol" in o)) $("tol").value = ({"1wk":0.6,"1d":0.25,"60m":0.1,"30m":0.07,"15m":0.05})[tf] ?? 0.25;
   const t=q.get("t"); if(t) $("ticker").value=t;
   // Scanner / deep-link: ?tp=1 forces Time+Price on; ?tp=0 forces off
   if(q.get("tp")==="1"||q.get("tp")==="true") $("showTimePrice").checked=true;
   if(q.get("tp")==="0"||q.get("tp")==="false") $("showTimePrice").checked=false;
+  // ?bars=N zooms to the last N candles after load (see resetView / urlBars)
 }
 
 // ---------- IPO grid ----------

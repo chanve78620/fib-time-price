@@ -22,7 +22,7 @@ This module is scanner-ready. A future daily scanner can call
 
 Chart deep-link (Time+Price on)::
 
-    https://fib-time-price.onrender.com/?t=AAPL&tf=1d&tp=1
+    https://fib-time-price.onrender.com/?t=AAPL&tf=1d&tp=1&bars=40
 """
 
 from __future__ import annotations
@@ -91,16 +91,21 @@ def chart_url(
     tf: str = "1d",
     asof: str | None = None,
     tp: bool = True,
+    bars: int | None = 40,
     base: str = SITE_BASE,
 ) -> str:
     """Deep-link that opens the site chart with Time+Price toggle on (``tp=1``).
 
-    Scanner rows should use ``target=_blank`` on this URL.
+    ``bars`` zooms the chart to the last N candles (``?bars=40``). Pass
+    ``bars=None`` to leave the default zoom. Scanner rows should use
+    ``target=_blank`` on this URL.
     """
     t = ticker.upper().lstrip("$")
     parts = [f"t={t}", f"tf={tf}"]
     if tp:
         parts.append("tp=1")
+    if bars is not None and bars > 0:
+        parts.append(f"bars={int(bars)}")
     if asof:
         parts.append(f"asof={asof}")
     return f"{base.rstrip('/')}/?{'&'.join(parts)}"

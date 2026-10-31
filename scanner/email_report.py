@@ -20,7 +20,7 @@ PAGE_URL = (
     "https://cursor.com/canvas/store-14b6a13c-f794-4d04-bcfe-d0893df95e28/"
     "bf0e6b89-7903-4f36-a2b0-a4f0c4e52937"
 )
-CHART = "https://fib-time-price.onrender.com/?t={t}&tf=1d&tp=1"
+CHART = "https://fib-time-price.onrender.com/?t={t}&tf=1d&tp=1&bars=40"
 
 
 def _fmt_date(s: str) -> str:
